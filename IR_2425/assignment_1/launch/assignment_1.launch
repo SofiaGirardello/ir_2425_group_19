@@ -1,0 +1,16 @@
+<launch>
+    <!-- Start the simulation with the specified world -->
+    <include file="$(find tiago_iaslab_simulation)/launch/start_simulation.launch">
+        <arg name="world_name" value="iaslab_assignment1"/>
+    </include>
+
+    <!-- Start the navigation stack -->
+    <include file="$(find tiago_iaslab_simulation)/launch/navigation.launch" />
+
+    <!-- Start AprilTag detection -->
+    <include file="$(find tiago_iaslab_simulation)/launch/apriltag.launch" />
+
+    <!-- Run the AprilTag IDs generator node -->
+    <node pkg="tiago_iaslab_simulation" type="apriltag_ids_generator_node" name="apriltag_ids_generator_node" output="screen" />
+</launch>
+
