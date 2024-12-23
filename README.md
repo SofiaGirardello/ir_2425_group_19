@@ -1,6 +1,14 @@
 # IR_2425
 # Assignment 1
 
+# GROUP 19
+
+Member1: Caduceo Andrea, andrea.caduceo@studenti.unipd.it
+
+Member2: Girardello Sofia, sofia.girardello.1@studenti.unipd.it
+
+Member3: Gizzarone Manuel, manuel.gizzarone@studenti.unipd.it
+
 This repository contains code for a ROS-based project focused on detecting AprilTags, transforming their poses to the map frame, and coordinating with a navigation system. The project includes an action server that listens for target IDs and handles AprilTag detections using `tf` transformations.
 
 ## Features
