@@ -22,7 +22,7 @@ This repository contains code for a ROS-based project focused on detecting April
 1. Clone the repository into your ROS workspace:
    ```bash
    cd ~/catkin_ws/src
-   git clone https://github.com/yourusername/IR_2425.git
+   git clone https://github.com/SofiaGirardello/ir_2425_group_19.git
 2. Build the workspace:
    ```bash
    cd ~/catkin_ws
