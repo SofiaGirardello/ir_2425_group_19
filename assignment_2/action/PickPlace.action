@@ -1,0 +1,15 @@
+# PickPlace.action
+
+# Goal
+geometry_msgs/PoseStamped object_pose
+geometry_msgs/PoseStamped place_pose
+
+---
+# Feedback
+string current_step
+
+---
+# Result
+bool success
+string message
+
