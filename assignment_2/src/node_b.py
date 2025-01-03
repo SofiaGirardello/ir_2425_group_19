@@ -1,188 +1,142 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 """
-@file   : node_c.py
-@brief  : Pick-and-place action server.
+@file   : node_b.py
+@brief  : Object detection using AprilTags and pose transformation to the target frame.
 
-@details: This node implements an action server to handle pick-and-place tasks.
-          It receives goals containing object poses and placement poses, and
-          uses MoveIt! to control the robot's arm to perform the operation.
+@details: This node detects AprilTags, transforms their poses to the robot's base_link frame, 
+          and sends a pick-and-place goal to the action server.
 
 @date   : 2024-1-20
-@authors: Caduceo Andrea, Girardello Sofia, Gizzarone Manuel
+@authors : Caduceo Andrea, Girardello Sofia, Gizzarone Manuel 
 """
 
 import rospy
 import actionlib
-from assignment_2.msg import PickPlaceAction, PickPlaceFeedback, PickPlaceResult
-from moveit_commander import MoveGroupCommander, RobotCommander, PlanningSceneInterface
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from actionlib_msgs.msg import GoalStatus
-from geometry_msgs.msg import Pose, PoseStamped
-from tf.transformations import quaternion_from_euler
-from gazebo_ros_link_attacher.srv import Attach, Detach
-from collections import deque
-import traceback
+from apriltag_ros.msg import AprilTagDetectionArray
+from assignment_2.msg import PickPlaceAction, PickPlaceGoal
+from geometry_msgs.msg import PoseStamped
+import tf
 
-
-class PickPlaceServer:
+class ObjectDetectionNode:
     def __init__(self):
-        rospy.init_node('node_c_pick_place_server')
+        rospy.init_node('node_b_object_detection')
+        self.listener = tf.TransformListener()
 
-        # Initialize MoveIt components
-        self.robot = RobotCommander()
-        self.scene = PlanningSceneInterface()
-        self.arm_group = MoveGroupCommander('arm')
-        self.gripper_group = MoveGroupCommander('gripper')
+        # Define the target frame to which we want to transform poses
+        self.target_frame = 'base_link'
 
-        # Initialize move_base action client
-        self.move_base_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
-        rospy.loginfo("Waiting for move_base action server...")
-        self.move_base_client.wait_for_server()
-        rospy.loginfo("Connected to move_base action server!")
+        # Lists to track detected IDs and poses
+        self.detected_ids = []
+        self.detected_poses = []
 
-        # Gazebo link attacher services
-        rospy.wait_for_service('/link_attacher_node/attach')
-        rospy.wait_for_service('/link_attacher_node/detach')
-        self.attach_srv = rospy.ServiceProxy('/link_attacher_node/attach', Attach)
-        self.detach_srv = rospy.ServiceProxy('/link_attacher_node/detach', Detach)
+		# Placement positions
+        self.placement_positions = []
+        self.current_position_index = 0
 
-        # Initialize action server
-        self.server = actionlib.SimpleActionServer('pick_place', PickPlaceAction, self.execute, False)
-        self.server.start()
-        rospy.loginfo("Pick-and-place action server is ready.")
+        # Subscribe to the /tag_detections topic to get AprilTag detections
+        self.detection_sub = rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.detection_callback)
 
-        # Queue for handling goals
-        self.goal_queue = deque()
-        self.processing_goal = False
+		# Subscribe to /placement_positions
+		self.placement_sub = rospy.Subscriber('/placement_positions', Point, self.placement_callback)
 
-    def execute(self, goal):
+        # Action client for pick-and-place operation
+        self.client = actionlib.SimpleActionClient('pick_place', PickPlaceAction)
+        rospy.loginfo("Waiting for pick_place action server...")
+        self.client.wait_for_server()
+        rospy.loginfo("Connected to pick_place action server.")
+
+	def placement_callback(self, msg):
         """
-        Executes the pick-and-place action for the received goal.
+        Callback to receive placement positions from the PlacementLineNode.
         """
-        feedback = PickPlaceFeedback()
-        result = PickPlaceResult()
+        self.placement_positions.append(msg)
+        rospy.loginfo(f"Received placement position: {msg}")
 
+    def detection_callback(self, msg):
+        """
+        Callback function for AprilTag detections. It processes detected tags and transforms their poses to the target frame.
+        """
+        source_frame = msg.header.frame_id
+
+        # Wait for the transform to be available
         try:
-            self.queue_pick_place_goal(goal)
-            self.process_next_goal()
+            self.listener.waitForTransform(self.target_frame, source_frame, rospy.Time.now(), rospy.Duration(1.0))
+        except tf.Exception as e:
+            rospy.logerr(f"Transform unavailable: {e}")
+			return
 
-            result.success = True
-            result.message = "Pick-and-place operation completed successfully."
-            self.server.set_succeeded(result)
+        # Process each detected tag
+        for detection in msg.detections:
+            tag_id = detection.id[0]
 
-        except Exception as e:
-            rospy.logerr(f"Error during pick-and-place: {e}")
-            rospy.logerr(traceback.format_exc())
-            result.success = False
-            result.message = f"Operation failed: {e}"
-            self.server.set_aborted(result)
+            # Check if the tag has already been processed
+            if tag_id in self.detected_ids:
+                continue
 
-    def queue_pick_place_goal(self, goal):
-        rospy.loginfo("Queuing pick-and-place goal.")
-        self.goal_queue.append(goal)
+            # Create a PoseStamped object for the tag's pose
+            pos_in = PoseStamped()
+            pos_in.header.frame_id = source_frame
+            pos_in.header.stamp = rospy.Time.now()
+            pos_in.pose = detection.pose.pose.pose
 
-    def process_next_goal(self):
-        if self.processing_goal:
-            return
+            # Transform the pose to the target frame
+            try:
+                pos_out = self.listener.transformPose(self.target_frame, pos_in)
 
-        while self.goal_queue:
-            self.processing_goal = True
-            goal = self.goal_queue.popleft()
-            self.execute_pick_and_place(goal)
-        self.processing_goal = False
+                # Save the ID and pose
+                self.detected_ids.append(tag_id)
+                self.detected_poses.append(pos_out)
 
-    def execute_pick_and_place(self, goal):
-        feedback = PickPlaceFeedback()
+				# Assign the next available placement position
+                if self.current_position_index < len(self.placement_positions):
+                    placement_point = self.placement_positions[self.current_position_index]
+                    place_pose = PoseStamped()
+                    place_pose.header.frame_id = self.target_frame
+                    place_pose.pose.position = placement_point
+                    place_pose.pose.orientation.w = 1.0
 
-        try:
-            feedback.current_step = "Executing pick-and-place task"
-            self.server.publish_feedback(feedback)
-            self.pick_and_place(goal.object_pose, goal.place_pose)
-            feedback.current_step = "Pick-and-place task completed"
-            self.server.publish_feedback(feedback)
+                	# Send a pick-and-place goal to the 	action server
+                	self.send_pick_place_goal(tag_id, pos_out)
 
-        except Exception as e:
-            rospy.logerr(f"Error during pick-and-place execution: {e}")
-            rospy.logerr(traceback.format_exc())
+					# Update the index for the next object
+                    self.current_position_index += 1
 
-    def pick_and_place(self, object_pose, place_pose):
-        rospy.loginfo(f"Picking object at: {object_pose}")
-        rospy.loginfo(f"Placing object at: {place_pose}")
+				else:
+                    rospy.logwarn("No more placement positions available.")
 
-        # Move arm to home position
-        self.arm_group.set_named_target('home')
-        self.arm_group.go(wait=True)
+            except tf.Exception as e:
+                	rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
-        # Move above the object
-        above_object_pose = Pose()
-        above_object_pose.position.x = object_pose.position.x
-        above_object_pose.position.y = object_pose.position.y
-        above_object_pose.position.z = object_pose.position.z + 0.1
-        above_object_pose.orientation.w = 1.0
-        self.arm_group.set_pose_target(above_object_pose)
-        self.arm_group.go(wait=True)
+    def send_pick_place_goal(self, tag_id, object_pose):
+        """
+        Sends a pick-and-place goal to the action server.
+        """
+        goal = PickPlaceGoal()
+        goal.object_pose = object_pose
+        goal.place_pose = goal.place_pose = place_pose
 
-        # Move to the object and grasp it
-        self.arm_group.set_pose_target(object_pose)
-        self.arm_group.go(wait=True)
+        rospy.loginfo(f"Sending pick-and-place goal for tag ID {tag_id}")
+        self.client.send_goal(goal, feedback_cb=self.feedback_callback)
+        self.client.wait_for_result()
 
-        rospy.loginfo("Attaching object to gripper...")
-        attach_req = Attach()
-        attach_req.model_name_1 = "robot"
-        attach_req.link_name_1 = "arm_7_link"
-        attach_req.model_name_2 = "target_object"
-        attach_req.link_name_2 = "link"
-        self.attach_srv(attach_req)
-
-        rospy.loginfo("Closing gripper...")
-        self.gripper_group.set_named_target('close')
-        self.gripper_group.go(wait=True)
-
-        # Move back above the object
-        self.arm_group.set_pose_target(above_object_pose)
-        self.arm_group.go(wait=True)
-
-        # Navigate to the placement position
-        self.navigate_to_place_position(place_pose)
-
-        # Place the object
-        self.arm_group.set_pose_target(place_pose)
-        self.arm_group.go(wait=True)
-
-        rospy.loginfo("Opening gripper...")
-        self.gripper_group.set_named_target('open')
-        self.gripper_group.go(wait=True)
-
-        rospy.loginfo("Detaching object from gripper...")
-        detach_req = Detach()
-        detach_req.model_name_1 = "robot"
-        detach_req.link_name_1 = "arm_7_link"
-        detach_req.model_name_2 = "target_object"
-        detach_req.link_name_2 = "link"
-        self.detach_srv(detach_req)
-
-    def navigate_to_place_position(self, place_pose):
-        goal = MoveBaseGoal()
-        goal.target_pose.header.frame_id = "map"
-        goal.target_pose.header.stamp = rospy.Time.now()
-        goal.target_pose.pose.position.x = place_pose.position.x
-        goal.target_pose.pose.position.y = place_pose.position.y
-        goal.target_pose.pose.orientation = place_pose.orientation
-
-        rospy.loginfo(f"Navigating to placement position at ({place_pose.position.x}, {place_pose.position.y})...")
-        self.move_base_client.send_goal(goal)
-        self.move_base_client.wait_for_result()
-
-        if self.move_base_client.get_state() == GoalStatus.SUCCEEDED:
-            rospy.loginfo("Successfully reached the placement position!")
+        result = self.client.get_result()
+        if result.success:
+            rospy.loginfo(f"Pick-and-place successful for tag ID {tag_id}: {result.message}")
         else:
-            rospy.logerr("Failed to navigate to the placement position.")
+            rospy.logwarn(f"Pick-and-place failed for tag ID {tag_id}: {result.message}")
 
 
+    def feedback_callback(self, feedback):
+        """
+        Handles feedback from the pick-and-place action server.
+        """
+        rospy.loginfo(f"Action feedback: {feedback.current_step}")
+
+# Main function to run the node
 if __name__ == '__main__':
     try:
-        PickPlaceServer()
+        ObjectDetectionNode()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
