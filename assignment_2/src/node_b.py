@@ -15,8 +15,9 @@ import rospy
 import actionlib
 from apriltag_ros.msg import AprilTagDetectionArray
 from assignment_2.msg import PickPlaceAction, PickPlaceGoal
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Point
 import tf
+
 
 class ObjectDetectionNode:
     def __init__(self):
@@ -30,15 +31,15 @@ class ObjectDetectionNode:
         self.detected_ids = []
         self.detected_poses = []
 
-		# Placement positions
+        # Placement positions
         self.placement_positions = []
         self.current_position_index = 0
 
         # Subscribe to the /tag_detections topic to get AprilTag detections
         self.detection_sub = rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.detection_callback)
 
-		# Subscribe to /placement_positions
-		self.placement_sub = rospy.Subscriber('/placement_positions', Point, self.placement_callback)
+        # Subscribe to /placement_positions
+        self.placement_sub = rospy.Subscriber('/placement_positions', Point, self.placement_callback)
 
         # Action client for pick-and-place operation
         self.client = actionlib.SimpleActionClient('pick_place', PickPlaceAction)
@@ -46,7 +47,7 @@ class ObjectDetectionNode:
         self.client.wait_for_server()
         rospy.loginfo("Connected to pick_place action server.")
 
-	def placement_callback(self, msg):
+    def placement_callback(self, msg):
         """
         Callback to receive placement positions from the PlacementLineNode.
         """
@@ -64,7 +65,7 @@ class ObjectDetectionNode:
             self.listener.waitForTransform(self.target_frame, source_frame, rospy.Time.now(), rospy.Duration(1.0))
         except tf.Exception as e:
             rospy.logerr(f"Transform unavailable: {e}")
-			return
+            return
 
         # Process each detected tag
         for detection in msg.detections:
@@ -88,7 +89,7 @@ class ObjectDetectionNode:
                 self.detected_ids.append(tag_id)
                 self.detected_poses.append(pos_out)
 
-				# Assign the next available placement position
+                # Assign the next available placement position
                 if self.current_position_index < len(self.placement_positions):
                     placement_point = self.placement_positions[self.current_position_index]
                     place_pose = PoseStamped()
@@ -96,17 +97,17 @@ class ObjectDetectionNode:
                     place_pose.pose.position = placement_point
                     place_pose.pose.orientation.w = 1.0
 
-                	# Send a pick-and-place goal to the 	action server
-                	self.send_pick_place_goal(tag_id, pos_out)
+                    # Send a pick-and-place goal to the action server
+                    self.send_pick_place_goal(tag_id, pos_out)
 
-					# Update the index for the next object
+                    # Update the index for the next object
                     self.current_position_index += 1
 
-				else:
+                else:
                     rospy.logwarn("No more placement positions available.")
 
             except tf.Exception as e:
-                	rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
+                rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
     def send_pick_place_goal(self, tag_id, object_pose):
         """
@@ -114,7 +115,7 @@ class ObjectDetectionNode:
         """
         goal = PickPlaceGoal()
         goal.object_pose = object_pose
-        goal.place_pose = goal.place_pose = place_pose
+        goal.place_pose = place_pose
 
         rospy.loginfo(f"Sending pick-and-place goal for tag ID {tag_id}")
         self.client.send_goal(goal, feedback_cb=self.feedback_callback)
@@ -126,12 +127,12 @@ class ObjectDetectionNode:
         else:
             rospy.logwarn(f"Pick-and-place failed for tag ID {tag_id}: {result.message}")
 
-
     def feedback_callback(self, feedback):
         """
         Handles feedback from the pick-and-place action server.
         """
         rospy.loginfo(f"Action feedback: {feedback.current_step}")
+
 
 # Main function to run the node
 if __name__ == '__main__':
@@ -140,3 +141,4 @@ if __name__ == '__main__':
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
+
