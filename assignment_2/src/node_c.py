@@ -16,8 +16,11 @@ import rospy
 import actionlib
 from assignment_2.msg import PickPlaceAction, PickPlaceFeedback, PickPlaceResult
 from moveit_commander import MoveGroupCommander, RobotCommander, PlanningSceneInterface
-from geometry_msgs.msg import PoseStamped
-from gazebo_ros_link_attacher.srv import Attach, Detach
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from actionlib_msgs.msg import GoalStatus
+from geometry_msgs.msg import Pose
+from gazebo_ros_link_attacher.srv import Attach
+from tf.transformations import quaternion_from_euler
 from collections import deque
 
 class PickPlaceServer:
@@ -41,7 +44,7 @@ class PickPlaceServer:
         rospy.wait_for_service('/link_attacher_node/attach')
         rospy.wait_for_service('/link_attacher_node/detach')
         self.attach_srv = rospy.ServiceProxy('/link_attacher_node/attach', Attach)
-        self.detach_srv = rospy.ServiceProxy('/link_attacher_node/detach', Detach) 
+        self.detach_srv = rospy.ServiceProxy('/link_attacher_node/detach', Attach) 
 
         # Initialize the action server
         self.server = actionlib.SimpleActionServer('pick_place', PickPlaceAction, self.execute, False)
@@ -53,7 +56,7 @@ class PickPlaceServer:
         self.processing_goal = False  # Flag to track goal processing status
 
         # Pre-move robot to the pickup table
-        self.move_to_pickup_table()
+        self.navigate_to_pickup_table(9.0 , 4.5, 3.0)
 
     def navigate_to_pickup_table(self, x, y, yaw):
         """
@@ -80,11 +83,11 @@ class PickPlaceServer:
 
         # Send the goal to the MoveBase action server
         rospy.loginfo(f"Navigating to pickup table: x={x}, y={y}, yaw={yaw}")
-        move_base_client.send_goal(goal)
-        move_base_client.wait_for_result()
+        self.move_base_client.send_goal(goal)
+        self.move_base_client.wait_for_result()
 
         # Check result status
-        if move_base_client.get_state() == GoalStatus.SUCCEEDED:
+        if self.move_base_client.get_state() == GoalStatus.SUCCEEDED:
             rospy.loginfo("Successfully reached the pickup table!")
         else:
             rospy.logerr("Navigation to pickup table failed.")
@@ -203,8 +206,8 @@ class PickPlaceServer:
         self.gripper_group.go(wait=True)
 
 		# 7. Return to the initial position
-        			  						   self.arm_group.set_pose_target(above_object_pose)
-self.arm_group.go(wait=True)
+        self.arm_group.set_pose_target(above_object_pose)
+        self.arm_group.go(wait=True)
 
 		# 8. Move the arm to an intermediate pose
         intermediate_pose = Pose()
@@ -225,31 +228,31 @@ self.arm_group.go(wait=True)
         self.arm_group.go(wait=True)
 
 		# 10. Navigate to the placement position
-rospy.loginfo("Navigating to the placement position...")
+        rospy.loginfo("Navigating to the placement position...")
 
-# Define the goal for move_base
-goal = MoveBaseGoal()
-goal.target_pose.header.frame_id = "map"
-goal.target_pose.header.stamp = rospy.Time.now()
+        # Define the goal for move_base
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = "map"
+        goal.target_pose.header.stamp = rospy.Time.now()
 
-# Set the position to the placement position
-goal.target_pose.pose.position.x = place_pose.position.x
-goal.target_pose.pose.position.y = place_pose.position.y
-goal.target_pose.pose.position.z = 0.0  # Navigation doesn't use Z
+        # Set the position to the placement position
+        goal.target_pose.pose.position.x = place_pose.position.x
+        goal.target_pose.pose.position.y = place_pose.position.y
+        goal.target_pose.pose.position.z = 0.0  # Navigation doesn't use Z
 
-# Use orientation from the place_pose
-goal.target_pose.pose.orientation = place_pose.orientation
+        # Use orientation from the place_pose
+        goal.target_pose.pose.orientation = place_pose.orientation
 
-# Send the goal to the move_base server
-rospy.loginfo(f"Sending navigation goal to: x={place_pose.position.x}, y={place_pose.position.y}")
-move_base_client.send_goal(goal)
-move_base_client.wait_for_result()
+        # Send the goal to the move_base server
+        rospy.loginfo(f"Sending navigation goal to: x={place_pose.position.x}, y={place_pose.position.y}")
+        self.move_base_client.send_goal(goal)
+        self.move_base_client.wait_for_result()
 
-# Check if the robot successfully navigated
-if move_base_client.get_state() == GoalStatus.SUCCEEDED:
-    rospy.loginfo("Successfully reached the placement position!")
-else:
-    rospy.logerr("Failed to navigate to the placement position.")
+        # Check if the robot successfully navigated
+        if self.move_base_client.get_state() == GoalStatus.SUCCEEDED:
+            rospy.loginfo("Successfully reached the placement position!")
+        else:
+            rospy.logerr("Failed to navigate to the placement position.")
 
 		# 11. Place the object on the table
         rospy.loginfo(f"Placing object at: {place_pose.position.x}, {place_pose.position.y}")
@@ -263,22 +266,22 @@ else:
 
 		# 13. Detach the object from the gripper using Gazebo_ros_link_attacher
         rospy.loginfo("Detaching object from gripper...")
-        detach_req = Detach()
+        detach_req = Attach()
         detach_req.model_name_1 = "robot"
         detach_req.link_name_1 = "arm_7_link"
         detach_req.model_name_2 = "target_object"
         detach_req.link_name_2 = "link"
         self.detach_srv(detach_req)
 
-		rospy.loginfo("Pick and place operation completed.")
+        rospy.loginfo("Pick and place operation completed.")
 
 
 if __name__ == '__main__':
-    try:
-        PickPlaceServer()
-        rospy.spin()
-    except rospy.ROSInterruptException:
-        pass
+        try:
+            PickPlaceServer()
+            rospy.spin()
+        except rospy.ROSInterruptException:
+            pass
 
 
 
