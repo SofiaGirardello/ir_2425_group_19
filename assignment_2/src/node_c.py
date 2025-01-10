@@ -22,6 +22,7 @@ from geometry_msgs.msg import Pose
 from gazebo_ros_link_attacher.srv import Attach
 from tf.transformations import quaternion_from_euler
 from collections import deque
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 class PickPlaceServer:
     def __init__(self):
@@ -34,7 +35,7 @@ class PickPlaceServer:
         self.arm_group = MoveGroupCommander('arm')  
         self.gripper_group = MoveGroupCommander('gripper')
 
-		# Initialize the move_base action client
+        # Initialize the move_base action client
         self.move_base_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         rospy.loginfo("Waiting for move_base action server...")
         self.move_base_client.wait_for_server()
@@ -55,8 +56,13 @@ class PickPlaceServer:
         self.goal_queue = deque()  # Use deque for efficient pop from left
         self.processing_goal = False  # Flag to track goal processing status
 
-        # Pre-move robot to the pickup table
-        self.navigate_to_pickup_table(9.0 , 4.5, 3.0)
+        # Pre-move robot to a midway point 
+        self.navigate_to_pickup_table(8.5, -0.0, 0.0)
+        # Move robot in front of the pick-up table 
+        self.navigate_to_pickup_table(8.9, -3.0, 3.14)
+
+        tilt_angle = -0.5  # Angle in rad, negative for downward inclinations
+        self.tilt_head(tilt_angle)
 
     def navigate_to_pickup_table(self, x, y, yaw):
         """
@@ -91,6 +97,30 @@ class PickPlaceServer:
             rospy.loginfo("Successfully reached the pickup table!")
         else:
             rospy.logerr("Navigation to pickup table failed.")
+
+    def tilt_head(self, tilt_angle):
+        """
+        Tilts the robot's head to a specified angle for better camera positioning.
+        Parameters:
+            tilt_angle (float): The desired tilt angle in radians. Negative values tilt the head downward.
+        """
+        # Publisher for the topic that controls the head's movement 
+        pub = rospy.Publisher('/head_controller/command', JointTrajectory, queue_size=10)
+        rospy.sleep(1)
+        
+        # Create the JointTrajectory message to define the head's motion
+        trajectory_msg = JointTrajectory()
+        trajectory_msg.header.stamp = rospy.Time.now()
+        trajectory_msg.joint_names = ['head_1_joint', 'head_2_joint']
+        
+        # Create a trajectory point to define the target position and duration
+        point = JointTrajectoryPoint()
+        point.positions = [0.0, tilt_angle]  
+        point.time_from_start = rospy.Duration(1) 
+        
+        # Add the trajectory point to the message
+        trajectory_msg.points.append(point)
+        pub.publish(trajectory_msg)
 
     def execute(self, goal):
         """
@@ -171,11 +201,14 @@ class PickPlaceServer:
         rospy.loginfo(f"Picking object at: {object_pose}")
         rospy.loginfo(f"Placing object at: {place_pose}")
 
-		# 1. Assign an initial configuration to the arm
+        # 0. Move in front of the table 
+        self.navigate_to_pickup_table(8.9, -3, 3.14)
+
+        # 1. Assign an initial configuration to the arm
         self.arm_group.set_named_target('home')
         self.arm_group.go(wait=True)
 
-		# 2. Move arm to a position above the object
+        # 2. Move arm to a position above the object
         above_object_pose = Pose()
         above_object_pose.position.x = object_pose.position.x
         above_object_pose.position.y = object_pose.position.y
@@ -185,13 +218,13 @@ class PickPlaceServer:
         self.arm_group.set_pose_target(above_object_pose)
         self.arm_group.go(wait=True)
 
-		# 3. Grasping the object through a linear movement (move down to the object)
+        # 3. Grasping the object through a linear movement (move down to the object)
         self.arm_group.set_pose_target(object_pose)
         self.arm_group.go(wait=True)
 
-		# 4. Remove the collision object
+        # 4. Remove the collision object
 
-		# 5. Attach the object to the gripper using Gazebo_ros_link_attacher
+        # 5. Attach the object to the gripper using Gazebo_ros_link_attacher
         rospy.loginfo("Attaching object to gripper...")
         attach_req = Attach()
         attach_req.model_name_1 = "robot"
@@ -200,16 +233,16 @@ class PickPlaceServer:
         attach_req.link_name_2 = "link"
         self.attach_srv(attach_req)
 
-		# 6. Close the gripper
+        # 6. Close the gripper
         rospy.loginfo("Closing the gripper to grasp the object...")
         self.gripper_group.set_named_target('close')
         self.gripper_group.go(wait=True)
 
-		# 7. Return to the initial position
+        # 7. Return to the initial position
         self.arm_group.set_pose_target(above_object_pose)
         self.arm_group.go(wait=True)
 
-		# 8. Move the arm to an intermediate pose
+        # 8. Move the arm to an intermediate pose
         intermediate_pose = Pose()
         intermediate_pose.position.x = 0.5
         intermediate_pose.position.y = 0.0
@@ -218,7 +251,7 @@ class PickPlaceServer:
         self.arm_group.set_pose_target(intermediate_pose)
         self.arm_group.go(wait=True)
 
-		# 9. Move to a safe pose (e.g., fold the arm close to the body)
+        # 9. Move to a safe pose (e.g., fold the arm close to the body)
         safe_pose = Pose()
         safe_pose.position.x = 0.3
         safe_pose.position.y = 0.0
@@ -227,7 +260,7 @@ class PickPlaceServer:
         self.arm_group.set_pose_target(safe_pose)
         self.arm_group.go(wait=True)
 
-		# 10. Navigate to the placement position
+        # 10. Navigate to the placement position
         rospy.loginfo("Navigating to the placement position...")
 
         # Define the goal for move_base
@@ -254,17 +287,17 @@ class PickPlaceServer:
         else:
             rospy.logerr("Failed to navigate to the placement position.")
 
-		# 11. Place the object on the table
+        # 11. Place the object on the table
         rospy.loginfo(f"Placing object at: {place_pose.position.x}, {place_pose.position.y}")
         self.arm_group.set_pose_target(place_pose)
         self.arm_group.go(wait=True)
 
-		# 12. Open the gripper
+        # 12. Open the gripper
         rospy.loginfo("Opening the gripper...")
         self.gripper_group.set_named_target('open')
         self.gripper_group.go(wait=True)
 
-		# 13. Detach the object from the gripper using Gazebo_ros_link_attacher
+        # 13. Detach the object from the gripper using Gazebo_ros_link_attacher
         rospy.loginfo("Detaching object from gripper...")
         detach_req = Attach()
         detach_req.model_name_1 = "robot"
@@ -277,12 +310,9 @@ class PickPlaceServer:
 
 
 if __name__ == '__main__':
-        try:
-            PickPlaceServer()
-            rospy.spin()
-        except rospy.ROSInterruptException:
-            pass
+    try:
+        PickPlaceServer()
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass
 
-
-
-      

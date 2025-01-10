@@ -62,7 +62,7 @@ class ObjectDetectionNode:
 
         # Wait for the transform to be available
         try:
-            self.listener.waitForTransform(self.target_frame, source_frame, rospy.Time.now(), rospy.Duration(1.0))
+            self.listener.waitForTransform(self.target_frame, source_frame, rospy.Time(0), rospy.Duration(1.0))
         except tf.Exception as e:
             rospy.logerr(f"Transform unavailable: {e}")
             return
@@ -78,7 +78,7 @@ class ObjectDetectionNode:
             # Create a PoseStamped object for the tag's pose
             pos_in = PoseStamped()
             pos_in.header.frame_id = source_frame
-            pos_in.header.stamp = rospy.Time.now()
+            pos_in.header.stamp = rospy.Time(0)
             pos_in.pose = detection.pose.pose.pose
 
             # Transform the pose to the target frame
