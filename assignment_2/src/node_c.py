@@ -34,6 +34,7 @@ class PickPlaceServer:
         self.scene = PlanningSceneInterface()
         self.arm_group = MoveGroupCommander('arm')  
         self.gripper_group = MoveGroupCommander('gripper')
+        self.home_position = None
 
         # Initialize the move_base action client
         self.move_base_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
@@ -187,7 +188,7 @@ class PickPlaceServer:
             # Execute the pick-and-place operation
             self.pick_and_place(goal.object_pose, goal.place_pose)
 
-            feedback.current_step = "Pick-and-place task completed"
+            result.current_step = "Pick-and-place task completed"
             self.server.publish_feedback(feedback)
 
         except Exception as e:
@@ -201,19 +202,15 @@ class PickPlaceServer:
         rospy.loginfo(f"Picking object at: {object_pose}")
         rospy.loginfo(f"Placing object at: {place_pose}")
 
-        # 0. Move in front of the table 
-        self.navigate_to_pickup_table(8.9, -3, 3.14)
-
         # 1. Assign an initial configuration to the arm
-        self.arm_group.set_named_target('home')
-        self.arm_group.go(wait=True)
+        self.home_position = self.arm_group.get_current_joint_values()
 
         # 2. Move arm to a position above the object
         above_object_pose = Pose()
-        above_object_pose.position.x = object_pose.position.x
-        above_object_pose.position.y = object_pose.position.y
-        above_object_pose.position.z = object_pose.position.z + 0.1 
-        above_object_pose.orientation.w = 1.0  # No rotation
+        above_object_pose.position.x = object_pose.pose.position.x
+        above_object_pose.position.y = object_pose.pose.position.y
+        above_object_pose.position.z = object_pose.pose.position.z + 0.1 
+        above_object_pose.pose.orientation.w = 1.0  # No rotation
         
         self.arm_group.set_pose_target(above_object_pose)
         self.arm_group.go(wait=True)
@@ -305,6 +302,9 @@ class PickPlaceServer:
         detach_req.model_name_2 = "target_object"
         detach_req.link_name_2 = "link"
         self.detach_srv(detach_req)
+
+        # 14. Move in front of the table 
+        self.navigate_to_pickup_table(8.9, -3, 3.14)
 
         rospy.loginfo("Pick and place operation completed.")
 
