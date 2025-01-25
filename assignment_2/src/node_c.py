@@ -25,8 +25,6 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from moveit_commander import MoveGroupCommander, PlanningSceneInterface, RobotCommander ,RobotTrajectory
 
 
-
-
 class PickPlaceServer:
     def __init__(self):
         # Initialize the ROS node
@@ -61,7 +59,7 @@ class PickPlaceServer:
         self.processing_goal = False  # Flag to track goal processing status
 
         # Pre-move robot to a midway point 
-        self.navigate_to_pickup_table(8.5, -0.0, 0.0)
+        #self.navigate_to_pickup_table(8.5, -0.0, 0.0)
 
         # Debugging the arm's position
         current_pose = self.arm_group.get_current_pose().pose
@@ -91,7 +89,7 @@ class PickPlaceServer:
         self.arm_group.go(wait=True)
 
         # Move robot in front of the pick-up table 
-        self.navigate_to_pickup_table(8.9, -3.0, 3.14)
+        self.navigate_to_pickup_table(9, -3.0, 3.14)
 
         tilt_angle = -0.5  # Angle in rad, negative for downward inclinations
         self.tilt_head(tilt_angle)
@@ -100,27 +98,28 @@ class PickPlaceServer:
         """
         Move the robot arm to the target pose using MoveIt!'s planning interface.
         """
-    
         self.arm_group.set_pose_reference_frame('base_link')
+        self.arm_group.set_pose_target(target_pose)  
 
-        self.arm_group.set_pose_target(target_pose)  # Set the target pose
-
+        # Plan the motion and check for collisions
         success = self.arm_group.go(wait=True)
 
-        move_group.stop()
-
-        self.arm_group.allow_replanning(True)
-
-        move_group.clear_pose_targets()
-
-        rospy.loginfo(f"Planning to pose: {target_pose}")
-        if not success:
-            rospy.logerr("Failed to plan motion. Checking constraints...")
+        if success:
+            rospy.loginfo(f"Successfully moved to target pose: {target_pose}")
         else:
-            rospy.loginfo("Plan found!")
-
-        self.arm_group.go(wait=True)
-        self.arm_group.stop()
+            rospy.logerr("Failed to plan motion due to collision.")
+            target_joint_values = [
+            0.07,     # Joint 1: Base rotation (e.g., 0.5 radians)
+            0.34,    # Joint 2: Shoulder (e.g., -0.3 radians)
+            -3.13,     # Joint 3: Elbow (e.g., 0.8 radians)
+            1.31,    # Joint 4: Wrist pitch (e.g., -1.2 radians)
+            1.58,     # Joint 5: Wrist roll (e.g., 0.6 radians)
+            -0.0,    # Joint 6: Wrist yaw (e.g., -0.4 radians)
+            0.0      # Joint 7: Gripper (e.g., 0.2 radians or a specific angle for the gripper)
+            ]
+            self.arm_group.set_joint_value_target(target_joint_values)
+            self.arm_group.go(wait=True)
+        
         self.arm_group.clear_pose_targets()
 
     def navigate_to_pickup_table(self, x, y, yaw):
@@ -189,11 +188,15 @@ class PickPlaceServer:
         result = PickPlaceResult()
 
         try:
-            # Queue the received goal
-            self.queue_pick_place_goal(goal)
+            # Process the received goal directly
+            self.process_goal(goal)
 
-            # Wait for and process the next goal in the queue
-            self.process_next_goal()
+            # Execute pick-and-place operation
+            self.execute_pick_and_place(goal)
+
+            # Send feedback only after the placing operation is complete
+            feedback.current_step = "Pick-and-place task completed"
+            self.server.publish_feedback(feedback)
 
             # Final success
             result.success = True
@@ -207,47 +210,27 @@ class PickPlaceServer:
             result.message = f"Operation failed: {e}"
             self.server.set_aborted(result)
 
-    def queue_pick_place_goal(self, goal):
+    def process_goal(self, goal):
         """
-        Queues a pick-and-place goal for processing.
+        Processes a pick-and-place goal directly (no queuing).
         """
-        rospy.loginfo("Queuing pick-and-place goal.")
-        self.goal_queue.append(goal)
+        if hasattr(goal, 'tag_id'):
+            rospy.loginfo(f"Picking object identified by AprilTag ID: {goal.tag_id}")
+        else:
+            rospy.logwarn("Goal does not contain a valid AprilTag ID.")
 
-    def process_next_goal(self):
-        """
-        Processes the next goal in the queue if one exists.
-        """
-        if self.processing_goal:
-            return  # If already processing a goal, return immediately
-
-        if self.goal_queue:
-            self.processing_goal = True  # Set processing flag to True
-
-            # Pop the next goal from the queue
-            goal = self.goal_queue.popleft()
-
-            # Send the goal to the MoveIt for execution
-            self.execute_pick_and_place(goal)
-
-            # After the goal is processed, reset the processing flag and continue
-            self.processing_goal = False
-            self.process_next_goal()  # Process next goal if available
+        # Add the logic to execute the pick-and-place operation here
+        rospy.loginfo("Executing pick-and-place operation...")
+        # Example placeholder: Replace with your pick-and-place logic
+        self.execute_pick_and_place(goal)
 
     def execute_pick_and_place(self, goal):
         """
         Executes the pick-and-place task for the given goal.
         """
-        feedback = PickPlaceFeedback()
         try:
-            feedback.current_step = "Executing pick-and-place task"
-            self.server.publish_feedback(feedback)
-
-            # Execute the pick-and-place operation
+            
             self.pick_and_place(goal.object_pose, goal.place_pose)
-
-            result.current_step = "Pick-and-place task completed"
-            self.server.publish_feedback(feedback)
 
         except Exception as e:
             rospy.logerr(f"Error during pick-and-place: {e}")
@@ -265,17 +248,17 @@ class PickPlaceServer:
 
         # 2. Move arm to a position above the object
         above_object_pose = Pose()
-        above_object_pose.position.x = object_pose.pose.position.x
-        above_object_pose.position.y = object_pose.pose.position.y
-        above_object_pose.position.z = object_pose.pose.position.z + 0.2 
+        above_object_pose.position.x = object_pose.pose.position.x 
+        above_object_pose.position.y = object_pose.pose.position.y + 0.1
+        above_object_pose.position.z = object_pose.pose.position.z 
         above_object_pose.orientation.w = 1.0
         
         self.move_arm_to_pose(above_object_pose)
         rospy.loginfo("I am on above object pose")
 
         # Debugging the arm's position
-        current_pose = self.arm_group.get_current_pose().pose
-        rospy.loginfo(f"Current arm pose: {current_pose}")
+        #current_pose = self.arm_group.get_current_pose().pose
+        #rospy.loginfo(f"Current arm pose: {current_pose}")
 
         # 3. Grasping the object through a linear movement (move down to the object)
         self.move_arm_to_pose(object_pose)

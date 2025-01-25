@@ -1,77 +1,67 @@
 #!/usr/bin/env python
-
+import sys
 import rospy
 import moveit_commander
-import tf
-from geometry_msgs.msg import Pose, PoseStamped
-from moveit_commander import PlanningSceneInterface
+from geometry_msgs.msg import Pose
 from shape_msgs.msg import SolidPrimitive
+from moveit_commander import PlanningSceneInterface
 
-class addCollisionObject:
-    
-    def add_pick_and_place_tables(self, scene):
-        
+class AddCollisionObject:
+    def __init__(self):
+        rospy.init_node('objectCollision')
+
+        # Initialize MoveIt! components
+        self.scene = PlanningSceneInterface()
+        moveit_commander.roscpp_initialize(sys.argv)
+
+        # Add collision objects for the tables
+        self.add_pick_and_place_tables()
+
+    def add_pick_and_place_tables(self):
         # Define the solid box for the tables
         table_primitive = SolidPrimitive()
         table_primitive.type = table_primitive.BOX
-        table_primitive.dimensions = [0.9, 0.9, 0.9]
+        table_primitive.dimensions = [0.95, 0.95, 0.95]
 
-        # Define the pick table pose in map frame
+        # Define the pick table pose in the map frame
         pick_table_pose = Pose()
-        pick_table_pose.position.x = 7.913443
-        pick_table_pose.position.y = -3.016501
-        pick_table_pose.position.z = 0.305887
+        pick_table_pose.position.x = 7.826
+        pick_table_pose.position.y = -2.983
+        pick_table_pose.position.z = 0.775 / 2  # Half the height of the table
         pick_table_pose.orientation.w = 1.0
 
         # Create the collision object for the pick table
         pick_collision_object = moveit_commander.CollisionObject()
-
-        # Initialize the collision object attributes
-        pick_collision_object.header.frame_id = "map"  
-        pick_collision_object.id = "pick_table"  
+        pick_collision_object.header.frame_id = "map"
+        pick_collision_object.id = "pick_table"
         pick_collision_object.primitives.append(table_primitive)
         pick_collision_object.primitive_poses.append(pick_table_pose)
+        pick_collision_object.operation = pick_collision_object.ADD
 
-        # Define the place table pose in map frame
+        # Define the place table pose in the map frame
         place_table_pose = Pose()
         place_table_pose.position.x = 7.895753
         place_table_pose.position.y = -1.923828
-        place_table_pose.position.z = 0.305887
+        place_table_pose.position.z = 0.35887
         place_table_pose.orientation.w = 1.0
 
         # Create the collision object for the place table
         place_collision_object = moveit_commander.CollisionObject()
-
-        # Initialize the collision object attributes
-        place_collision_object.header.frame_id = "map"  
-        place_collision_object.id = "place_table"  
+        place_collision_object.header.frame_id = "map"
+        place_collision_object.id = "place_table"
         place_collision_object.primitives.append(table_primitive)
         place_collision_object.primitive_poses.append(place_table_pose)
-
-        # Add the collision objects
-        pick_collision_object.operation = pick_collision_object.ADD
         place_collision_object.operation = place_collision_object.ADD
 
-        # Add the object to the planning scene
-        scene.add_object(pick_collision_object)
-        scene.add_object(place_collision_object)
+        # Add the collision objects to the scene
+        self.scene.add_object(pick_collision_object)
+        self.scene.add_object(place_collision_object)
+
         rospy.loginfo("Collision objects added to the scene!")
-
-    def __init__(self):
-
-        # Initialize the node 'objectCollision'
-        rospy.init_node('objectCollision')
-
-        # Initialize the collision object attributes
-        scene = PlanningSceneInterface()
-
-        self.add_pick_and_place_tables(scene)
-    
-
 
 if __name__ == "__main__":
     try:
-        addCollisionObject()
+        AddCollisionObject()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass

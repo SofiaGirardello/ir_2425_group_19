@@ -47,19 +47,20 @@ class ObjectDetectionNode:
         self.client.wait_for_server()
         rospy.loginfo("Connected to pick_place action server.")
 
+        # Flag to track whether a goal is being processed
+        self.processing_goal = False
+
     def placement_callback(self, msg):
         """
         Callback to receive placement positions from the PlacementLineNode.
         """
         self.placement_positions.append(msg)
-        rospy.loginfo(f"Received placement position: {msg}")
 
     def detection_callback(self, msg):
         """
         Callback function for AprilTag detections. It processes detected tags and transforms their poses to the target frame.
         """
         source_frame = msg.header.frame_id
-        rospy.loginfo(f"I-m in the apriltag callback")
 
         # Wait for the transform to be available
         try:
@@ -69,12 +70,9 @@ class ObjectDetectionNode:
             return
 
         # Process each detected tag
-        rospy.loginfo(f"Detected IDs count: {len(self.detected_ids)}")
-        rospy.loginfo(f"Placement positions count: {len(self.placement_positions)}")
         for detection in msg.detections:
             tag_id = detection.id[0]
             
-
             # Check if the tag has already been processed
             if tag_id in self.detected_ids:
                 continue
@@ -84,14 +82,12 @@ class ObjectDetectionNode:
             pos_in.header.frame_id = source_frame
             pos_in.header.stamp = rospy.Time(0)
             pos_in.pose = detection.pose.pose.pose
-            rospy.loginfo("im here")
+
             # Transform the pose to the target frame
             try:
-                rospy.loginfo("im here after the try")
                 pos_out = self.listener.transformPose(self.target_frame, pos_in)
 
                 # Assign the next available placement position
-                rospy.loginfo(f"current pos index: {self.current_position_index}")
                 if self.current_position_index < len(self.placement_positions):
                     placement_point = self.placement_positions[self.current_position_index]
                     place_pose = PoseStamped()
@@ -99,9 +95,13 @@ class ObjectDetectionNode:
                     place_pose.pose.position = placement_point
                     place_pose.pose.orientation.w = 1.0
 
-                    # Send a pick-and-place goal to the action server
-                    rospy.loginfo("time to send a goal")
-                    self.send_pick_place_goal(tag_id, pos_out, place_pose)
+                    # Check if another goal is being processed
+                    if not self.processing_goal:
+                        self.processing_goal = True
+                        rospy.loginfo(f"Sending pick-and-place goal for tag ID {tag_id}")
+                        self.send_pick_place_goal(tag_id, pos_out, place_pose)
+                    else:
+                        rospy.logwarn(f"Currently processing a goal. Skipping pick-and-place for tag ID {tag_id}")
 
                     # Save the ID and pose
                     self.detected_ids.append(tag_id)
@@ -109,7 +109,6 @@ class ObjectDetectionNode:
 
                     # Update the index for the next object
                     self.current_position_index += 1
-
                 else:
                     rospy.logwarn("No more placement positions available.")
 
@@ -120,7 +119,6 @@ class ObjectDetectionNode:
         """
         Sends a pick-and-place goal to the action server.
         """
-        rospy.loginfo("Im in the pick place goal")
         goal = PickPlaceGoal()
         goal.object_pose = object_pose
         goal.place_pose = place_pose
@@ -129,18 +127,22 @@ class ObjectDetectionNode:
         self.client.send_goal(goal, feedback_cb=self.feedback_callback)
         self.client.wait_for_result()
 
-        result = self.client.wait_for_result()
+        result = self.client.get_result()
+
         rospy.loginfo(f"Received result: {result}")
         if result.success:
-            rospy.loginfo(f"Pick-and-place successful for tag ID {tag_id}: {feedback.message}")
+            rospy.loginfo(f"Pick-and-place successful for tag ID {tag_id}")
         else:
-            rospy.logwarn(f"Pick-and-place failed for tag ID {tag_id}: {feedback.message}")
+            rospy.logwarn(f"Pick-and-place failed for tag ID {tag_id}")
+
+        # Mark that goal processing is complete
+        self.processing_goal = False
 
     def feedback_callback(self, feedback):
         """
         Handles feedback from the pick-and-place action server.
         """
-        rospy.loginfo(f"Action feedback: {result.current_step}")
+        rospy.loginfo(f"Action feedback: {feedback.current_step}")
 
 
 # Main function to run the node
@@ -150,4 +152,5 @@ if __name__ == '__main__':
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
+
 
