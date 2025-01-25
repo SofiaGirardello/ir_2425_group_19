@@ -28,8 +28,13 @@ class PlacementLineNode:
         # Get line coefficients once
         self.coeffs = self.get_line_coefficients()
 
-        # Set up a timer to publish placement positions every 5 seconds
-        rospy.Timer(rospy.Duration(5), self.publish_positions)
+        rate = rospy.Rate(1)
+        while not rospy.is_shutdown():
+            # Check if there is at least a subscriber to the topic before publishing
+            if self.placement_pub.get_num_connections() > 0:
+                self.publish_positions() 
+                break
+            rate.sleep()
 
     def get_line_coefficients(self):
         try:
@@ -41,11 +46,12 @@ class PlacementLineNode:
             rospy.logerr(f"Service call failed: {e}")
             return None
 
-    def publish_positions(self, event):
+    def publish_positions(self):
         if self.coeffs:
             m, q = self.coeffs[0], self.coeffs[1]
             positions = []
-            for x in range(1, 5):  # Example x values, could be adjusted or made configurable
+            for x in range(1, 4): # Example x values, could be adjusted or made configurable
+                x = x/10  
                 y = m * x + q
                 position = Point(x, y, 0)  # Z coordinate is 0
                 positions.append(position)

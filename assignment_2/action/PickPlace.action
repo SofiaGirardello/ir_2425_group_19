@@ -3,6 +3,7 @@
 # Goal
 geometry_msgs/PoseStamped object_pose
 geometry_msgs/PoseStamped place_pose
+int32 id
 
 ---
 # Result

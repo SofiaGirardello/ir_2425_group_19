@@ -2,22 +2,31 @@
 import sys
 import rospy
 import moveit_commander
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseStamped
 from shape_msgs.msg import SolidPrimitive
 from moveit_commander import PlanningSceneInterface
 
 class AddCollisionObject:
     def __init__(self):
-        rospy.init_node('objectCollision')
 
         # Initialize MoveIt! components
         self.scene = PlanningSceneInterface()
         moveit_commander.roscpp_initialize(sys.argv)
 
+        self.itempose = Pose()
+        self.solidprimitive = SolidPrimitive()
+
         # Add collision objects for the tables
         self.add_pick_and_place_tables()
 
     def add_pick_and_place_tables(self):
+
+        current_objects = self.scene.get_objects()
+
+        # Check if the collision object is already in the scene
+        if "pick_table" in current_objects:
+            return
+        
         # Define the solid box for the tables
         table_primitive = SolidPrimitive()
         table_primitive.type = table_primitive.BOX
@@ -27,7 +36,7 @@ class AddCollisionObject:
         pick_table_pose = Pose()
         pick_table_pose.position.x = 7.826
         pick_table_pose.position.y = -2.983
-        pick_table_pose.position.z = 0.775 / 2  # Half the height of the table
+        pick_table_pose.position.z = 0.75 / 2  # Half the height of the table
         pick_table_pose.orientation.w = 1.0
 
         # Create the collision object for the pick table
@@ -42,7 +51,7 @@ class AddCollisionObject:
         place_table_pose = Pose()
         place_table_pose.position.x = 7.895753
         place_table_pose.position.y = -1.923828
-        place_table_pose.position.z = 0.35887
+        place_table_pose.position.z = 0.75 / 2
         place_table_pose.orientation.w = 1.0
 
         # Create the collision object for the place table
@@ -59,9 +68,47 @@ class AddCollisionObject:
 
         rospy.loginfo("Collision objects added to the scene!")
 
-if __name__ == "__main__":
-    try:
-        AddCollisionObject()
-        rospy.spin()
-    except rospy.ROSInterruptException:
-        pass
+    def add_new_collision_object(self, tag_id, pos_out):
+
+        collision_object = moveit_commander.CollisionObject()
+
+        self.itempose = pos_out.pose
+        self.solidprimitive = self.map_id_to_solid(tag_id)
+
+        collision_object.header.frame_id = "map"
+        collision_object.id = str(tag_id)
+        collision_object.primitives.append(self.solidprimitive)
+        collision_object.primitive_poses.append(self.itempose)
+        collision_object.operation = collision_object.ADD
+
+        self.scene.add_object(collision_object)
+
+    def remove_collision_object(self, tag_id):
+
+        self.scene.remove_world_object(str(tag_id))
+
+    def map_id_to_solid(self, id):
+
+        solidprimitive = SolidPrimitive()
+
+        list_hexagon = [1, 2, 3]
+        list_cube = [4, 5, 6]
+        list_triangular = [7, 8, 9]
+
+        cylinder_dimension = [0.1, 0.05]
+        cube_dimension = [0.05, 0.05, 0.05]
+        parallelepiped_dimension = [0.07, 0.05 ,0.035] 
+
+        if id in list_hexagon:
+            solidprimitive.type = solidprimitive.CYLINDER
+            solidprimitive.dimensions = cylinder_dimension
+
+        if id in list_cube:
+            solidprimitive.type = solidprimitive.BOX
+            solidprimitive.dimensions = cube_dimension
+
+        if id in list_triangular:
+            solidprimitive.type = solidprimitive.BOX
+            solidprimitive.dimensions = parallelepiped_dimension
+
+        return solidprimitive
