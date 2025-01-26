@@ -31,7 +31,7 @@ class AddCollisionObject:
         # Define the solid box for the tables
         table_primitive = SolidPrimitive()
         table_primitive.type = table_primitive.BOX
-        table_primitive.dimensions = [0.90, 0.90, 0.375]
+        table_primitive.dimensions = [0.90, 0.90, 0.45]
 
         # Define the pick table pose in the map frame
         pick_table_pose = Pose()
@@ -75,21 +75,8 @@ class AddCollisionObject:
 
         collision_object = moveit_commander.CollisionObject()
 
-        self.itempose = pos_out.pose
-        self.solidprimitive = self.map_id_to_solid(tag_id)
-
-        object_orientation = self.itempose.orientation
-        _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
         
-        # Convert Euler angles (roll, pitch, yaw) back to quaternion
-        new_orientation = quaternion_from_euler(0, 0, yaw)
-
-        # Assuming you want to set the orientation in a new pose
-        self.itempose.orientation.x = new_orientation[0]
-        self.itempose.orientation.y = new_orientation[1]
-        self.itempose.orientation.z = new_orientation[2]
-        self.itempose.orientation.w = new_orientation[3]
-
+        self.solidprimitive, self.itempose = self.map_id_to_solid(tag_id, pos_out)
 
         collision_object.header.frame_id = "map"
         collision_object.id = str(tag_id)
@@ -105,9 +92,23 @@ class AddCollisionObject:
 
         self.scene.remove_world_object(str(tag_id))
 
-    def map_id_to_solid(self, id):
+    def map_id_to_solid(self, id, pose):
 
         solidprimitive = SolidPrimitive()
+        itempose = pose.pose
+        
+
+        object_orientation = itempose.orientation
+        _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
+        
+        # Convert Euler angles (roll, pitch, yaw) back to quaternion
+        new_orientation = quaternion_from_euler(0, 0, yaw)
+
+        # Assuming you want to set the orientation in a new pose
+        itempose.orientation.x = new_orientation[0]
+        itempose.orientation.y = new_orientation[1]
+        itempose.orientation.z = new_orientation[2]
+        itempose.orientation.w = new_orientation[3]
 
         list_hexagon = [1, 2, 3]
         list_cube = [4, 5, 6]
@@ -120,13 +121,16 @@ class AddCollisionObject:
         if id in list_hexagon:
             solidprimitive.type = solidprimitive.CYLINDER
             solidprimitive.dimensions = cylinder_dimension
+            itempose.position.z -= 0.05
 
         if id in list_cube:
             solidprimitive.type = solidprimitive.BOX
             solidprimitive.dimensions = cube_dimension
+            itempose.position.z -= 0.025
 
         if id in list_triangular:
             solidprimitive.type = solidprimitive.BOX
             solidprimitive.dimensions = parallelepiped_dimension
+            itempose.position.z -= 0.0175
 
-        return solidprimitive
+        return solidprimitive, itempose

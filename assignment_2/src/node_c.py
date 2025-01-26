@@ -35,6 +35,7 @@ class PickPlaceServer:
         self.scene = PlanningSceneInterface()
         self.arm_group = MoveGroupCommander('arm_torso')  # Move group for the arm
         self.gripper_group = MoveGroupCommander('gripper')
+        self.arm_group.set_end_effector_link('gripper_link')
         self.home_position = None
 
         # Initialize the move_base action client
@@ -60,10 +61,10 @@ class PickPlaceServer:
         #self.goal_queue = deque()  # Use deque for efficient pop from left
         #self.processing_goal = False  # Flag to track goal processing status
 
-        # self.navigate_to_pickup_table(8.8, 0.0, 0.0)
+        self.navigate_to_pickup_table(8.8, 0.0, 0.0)
 
         # Pre-move robot to a midway point
-        #self.navigate_to_pickup_table(8.8, -3.0, -1.57)
+        # self.navigate_to_pickup_table(8.8, -3.0, -1.57)
 
         # Debugging the arm's position
         # current_pose = self.arm_group.get_current_pose().pose
@@ -78,13 +79,14 @@ class PickPlaceServer:
         self.arm_group.set_start_state_to_current_state()
 
         self.target_joint_values = [
+        0.34,
         0.07,     # Joint 1: Base rotation (e.g., 0.5 radians)
         0.34,    # Joint 2: Shoulder (e.g., -0.3 radians)
         -3.13,     # Joint 3: Elbow (e.g., 0.8 radians)
         1.31,    # Joint 4: Wrist pitch (e.g., -1.2 radians)
         1.58,     # Joint 5: Wrist roll (e.g., 0.6 radians)
         -0.0,    # Joint 6: Wrist yaw (e.g., -0.4 radians)
-        0.0      # Joint 7: Gripper (e.g., 0.2 radians or a specific angle for the gripper)
+        0.0    # Joint 7: Gripper (e.g., 0.2 radians or a specific angle for the gripper)     
         ]
 
         # Set the target joint values
@@ -101,14 +103,7 @@ class PickPlaceServer:
         # Move robot in front of the pick-up table 
         self.navigate_to_pickup_table(8.8, -3.0, 3.14)
 
-<<<<<<< HEAD
         self.tilt_head(tilt_angle/2)
-=======
-        self.collision_object.add_pick_and_place_tables()
-
-        tilt_angle = -0.5  # Angle in rad, negative for downward inclinations
-        self.tilt_head(tilt_angle)
->>>>>>> b12b4ed700dbbe11da642dbc6b50101ed8eaf17e
 
 
     # CHeck reachable workspace
@@ -117,7 +112,8 @@ class PickPlaceServer:
         Move the robot arm to the target pose using MoveIt!'s planning interface.
         """
         self.arm_group.set_pose_reference_frame('base_link')
-        self.arm_group.set_pose_target(target_pose)  
+        self.arm_group.set_pose_target(target_pose)
+          
 
         self.plan = self.arm_group.plan()
         # Plan the motion and check for collisions
@@ -126,7 +122,7 @@ class PickPlaceServer:
         if success:
             rospy.loginfo(f"Successfully moved to target pose: {target_pose}")
         else:
-            rospy.logerr("Failed to plan motion due to collision.")
+            rospy.logerr("Failed due to plan motion.")
             self.arm_group.set_joint_value_target(self.target_joint_values)
             self.arm_group.go(wait=True)
         
@@ -260,7 +256,7 @@ class PickPlaceServer:
         above_object_pose = Pose()
         above_object_pose.position.x = object_pose.pose.position.x 
         above_object_pose.position.y = object_pose.pose.position.y 
-        above_object_pose.position.z = object_pose.pose.position.z + 0.1
+        above_object_pose.position.z = object_pose.pose.position.z + 0.5
 
         object_orientation = object_pose.pose.orientation
         _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
@@ -273,7 +269,7 @@ class PickPlaceServer:
         above_object_pose.orientation.y = new_orientation[1]
         above_object_pose.orientation.z = new_orientation[2]
         above_object_pose.orientation.w = new_orientation[3]
-        #above_object_pose.orientation = object_pose.pose.orientation # Qua ce lo prendiamo in culo
+        # above_object_pose.orientation = object_pose.pose.orientation # Qua ce lo prendiamo in culo
         
         self.move_arm_to_pose(above_object_pose)
         rospy.loginfo("I am on above object pose")
@@ -282,16 +278,14 @@ class PickPlaceServer:
         #current_pose = self.arm_group.get_current_pose().pose
         #rospy.loginfo(f"Current arm pose: {current_pose}")
 
+        # 4. Remove the collision object
+        self.collision_object.remove_collision_object(id)
+
         # 3. Grasping the object through a linear movement (move down to the object)
-        object_pose.pose.orientation.x = new_orientation[0]
-        object_pose.pose.orientation.y = new_orientation[1]
-        object_pose.pose.orientation.z = new_orientation[2]
-        object_pose.pose.orientation.w = new_orientation[3]
+        object_pose.pose.position.z = object_pose.pose.position.z + 0.2
         self.move_arm_to_pose(object_pose)
         rospy.loginfo("I am on object pose")
 
-        # 4. Remove the collision object
-        self.collision_object.remove_collision_object(id)
 
         # 5. Attach the object to the gripper using Gazebo_ros_link_attacher
         rospy.loginfo("Attaching object to gripper...")
@@ -304,7 +298,7 @@ class PickPlaceServer:
 
         # 6. Close the gripper
         rospy.loginfo("Closing the gripper...")
-        gripper_joint_position = 1.0  # Adjust this value depending on your gripper's range
+        gripper_joint_position = 0.0  # Adjust this value depending on your gripper's range
         self.gripper_group.set_joint_value_target([gripper_joint_position])
         self.gripper_group.go(wait=True)
 
@@ -326,7 +320,7 @@ class PickPlaceServer:
 
         # 12. Open the gripper
         rospy.loginfo("Opening the gripper...")
-        gripper_joint_position = 0.0  # Adjust this value depending on your gripper's range
+        gripper_joint_position = 0.1  # Adjust this value depending on your gripper's range
         self.gripper_group.set_joint_value_target([gripper_joint_position])
         self.gripper_group.go(wait=True)
 

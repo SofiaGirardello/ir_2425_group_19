@@ -119,7 +119,6 @@ class ObjectDetectionNode:
             except tf.Exception as e:
                 rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
-<<<<<<< HEAD
             rospy.loginfo(f"{self.detected_ids}")
             if 10 in self.detected_ids:
                 ind = self.detected_ids.index(10)
@@ -129,45 +128,17 @@ class ObjectDetectionNode:
             rospy.loginfo(f"{self.detected_ids}")
             self.send_pick_place_goal(self.detected_ids, pick_poses, place_poses)
             #self.detection_sub.unregister()
-=======
-        if len(self.detected_ids) > 0 and len(self.placement_positions) > 0:
-            rospy.loginfo("Sending a goal...")
-            self.send_pick_place_goal(self.detected_ids, self.detected_poses, self.placement_positions)
-            self.detection_sub.unregister()
->>>>>>> b12b4ed700dbbe11da642dbc6b50101ed8eaf17e
 
     def send_pick_place_goal(self, detected_ids, detected_poses, place_poses):
         """
         Sends a pick-and-place goal to the action server.
         """
 
-<<<<<<< HEAD
         rospy.loginfo("durante")
         min_ind = min(len(detected_poses), len(place_poses))
         rospy.loginfo(f"{min_ind}")
         for i in range(1, min_ind+1):
             rospy.loginfo("3-2")
-=======
-        rospy.loginfo("In the pick place goal")
-        rospy.loginfo(f"Detected IDs: {len(detected_ids)}, Detected Poses: {len(detected_poses)}, Place Poses: {len(place_poses)}")
-
-
-        cont = 0
-        for id, pose_pick, pose_place in zip(detected_ids, detected_poses, place_poses):
-
-            rospy.loginfo("In the loop")
-
-            if cont >= 4:
-                break
-
-            # Convert Point to PoseStamped
-            pose_place = PoseStamped()
-            pose_place.header.frame_id = self.target_frame
-            pose_place.header.stamp = rospy.Time.now()
-            pose_place.pose.position = pose_place.pose.position
-            pose_place.pose.orientation.w = 1.0
-
->>>>>>> b12b4ed700dbbe11da642dbc6b50101ed8eaf17e
             goal = PickPlaceGoal()
             goal.object_pose = detected_poses[i]
             goal.place_pose = place_poses[i]
