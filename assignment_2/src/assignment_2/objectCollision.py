@@ -5,6 +5,7 @@ import moveit_commander
 from geometry_msgs.msg import Pose, PoseStamped
 from shape_msgs.msg import SolidPrimitive
 from moveit_commander import PlanningSceneInterface
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
 class AddCollisionObject:
     def __init__(self):
@@ -30,7 +31,7 @@ class AddCollisionObject:
         # Define the solid box for the tables
         table_primitive = SolidPrimitive()
         table_primitive.type = table_primitive.BOX
-        table_primitive.dimensions = [0.95, 0.95, 0.95]
+        table_primitive.dimensions = [0.90, 0.90, 0.375]
 
         # Define the pick table pose in the map frame
         pick_table_pose = Pose()
@@ -70,10 +71,25 @@ class AddCollisionObject:
 
     def add_new_collision_object(self, tag_id, pos_out):
 
+        rospy.loginfo("Start diocane")
+
         collision_object = moveit_commander.CollisionObject()
 
         self.itempose = pos_out.pose
         self.solidprimitive = self.map_id_to_solid(tag_id)
+
+        object_orientation = self.itempose.orientation
+        _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
+        
+        # Convert Euler angles (roll, pitch, yaw) back to quaternion
+        new_orientation = quaternion_from_euler(0, 0, yaw)
+
+        # Assuming you want to set the orientation in a new pose
+        self.itempose.orientation.x = new_orientation[0]
+        self.itempose.orientation.y = new_orientation[1]
+        self.itempose.orientation.z = new_orientation[2]
+        self.itempose.orientation.w = new_orientation[3]
+
 
         collision_object.header.frame_id = "map"
         collision_object.id = str(tag_id)
@@ -82,6 +98,8 @@ class AddCollisionObject:
         collision_object.operation = collision_object.ADD
 
         self.scene.add_object(collision_object)
+
+        rospy.loginfo(f"{tag_id}")
 
     def remove_collision_object(self, tag_id):
 
@@ -97,7 +115,7 @@ class AddCollisionObject:
 
         cylinder_dimension = [0.1, 0.05]
         cube_dimension = [0.05, 0.05, 0.05]
-        parallelepiped_dimension = [0.07, 0.05 ,0.035] 
+        parallelepiped_dimension = [0.05, 0.07, 0.035] 
 
         if id in list_hexagon:
             solidprimitive.type = solidprimitive.CYLINDER

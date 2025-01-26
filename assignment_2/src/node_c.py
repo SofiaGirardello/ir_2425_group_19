@@ -17,9 +17,9 @@ import actionlib
 from assignment_2.msg import PickPlaceAction, PickPlaceFeedback, PickPlaceResult
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalStatus
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, Quaternion
 from gazebo_ros_link_attacher.srv import Attach
-from tf.transformations import quaternion_from_euler
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from collections import deque
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from moveit_commander import MoveGroupCommander, PlanningSceneInterface, RobotCommander ,RobotTrajectory
@@ -33,7 +33,7 @@ class PickPlaceServer:
         # Initialize MoveIt components
         self.robot = RobotCommander()
         self.scene = PlanningSceneInterface()
-        self.arm_group = MoveGroupCommander('arm')  # Move group for the arm
+        self.arm_group = MoveGroupCommander('arm_torso')  # Move group for the arm
         self.gripper_group = MoveGroupCommander('gripper')
         self.home_position = None
 
@@ -92,13 +92,23 @@ class PickPlaceServer:
 
         self.arm_group.go(wait=True)
 
+        self.navigate_to_pickup_table(9.2, -2.0, 3.14)
+
+        tilt_angle = -1 # Angle in rad, negative for downward inclinations
+        self.tilt_head(tilt_angle)
+        rospy.sleep(3)
+        self.tilt_head(0)
         # Move robot in front of the pick-up table 
         self.navigate_to_pickup_table(8.8, -3.0, 3.14)
 
+<<<<<<< HEAD
+        self.tilt_head(tilt_angle/2)
+=======
         self.collision_object.add_pick_and_place_tables()
 
         tilt_angle = -0.5  # Angle in rad, negative for downward inclinations
         self.tilt_head(tilt_angle)
+>>>>>>> b12b4ed700dbbe11da642dbc6b50101ed8eaf17e
 
 
     # CHeck reachable workspace
@@ -174,7 +184,7 @@ class PickPlaceServer:
         # Create a trajectory point to define the target position and duration
         point = JointTrajectoryPoint()
         point.positions = [0.0, tilt_angle]  
-        point.time_from_start = rospy.Duration(1) 
+        point.time_from_start = rospy.Duration(3) 
         
         # Add the trajectory point to the message
         trajectory_msg.points.append(point)
@@ -251,16 +261,32 @@ class PickPlaceServer:
         above_object_pose.position.x = object_pose.pose.position.x 
         above_object_pose.position.y = object_pose.pose.position.y 
         above_object_pose.position.z = object_pose.pose.position.z + 0.1
-        above_object_pose.orientation = object_pose.pose.orientation # Qua ce lo prendiamo in culo
+
+        object_orientation = object_pose.pose.orientation
+        _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
+        
+        # Convert Euler angles (roll, pitch, yaw) back to quaternion
+        new_orientation = quaternion_from_euler(0, 0, yaw)
+
+        # Assuming you want to set the orientation in a new pose
+        above_object_pose.orientation.x = new_orientation[0]
+        above_object_pose.orientation.y = new_orientation[1]
+        above_object_pose.orientation.z = new_orientation[2]
+        above_object_pose.orientation.w = new_orientation[3]
+        #above_object_pose.orientation = object_pose.pose.orientation # Qua ce lo prendiamo in culo
         
         self.move_arm_to_pose(above_object_pose)
         rospy.loginfo("I am on above object pose")
-
+        
         # Debugging the arm's position
         #current_pose = self.arm_group.get_current_pose().pose
         #rospy.loginfo(f"Current arm pose: {current_pose}")
 
         # 3. Grasping the object through a linear movement (move down to the object)
+        object_pose.pose.orientation.x = new_orientation[0]
+        object_pose.pose.orientation.y = new_orientation[1]
+        object_pose.pose.orientation.z = new_orientation[2]
+        object_pose.pose.orientation.w = new_orientation[3]
         self.move_arm_to_pose(object_pose)
         rospy.loginfo("I am on object pose")
 
@@ -274,11 +300,12 @@ class PickPlaceServer:
         attach_req.link_name_1 = "arm_7_link"
         attach_req.model_name_2 = f"tag{id}"
         attach_req.link_name_2 = f"tag{id}_link"
-        self.attach_srv(attach_req)
+        self.attach_srv(attach_req.model_name_1, attach_req.link_name_1, attach_req.model_name_2, attach_req.link_name_2)
 
         # 6. Close the gripper
-        rospy.loginfo("Closing the gripper to grasp the object...")
-        self.gripper_group.set_named_target('close')
+        rospy.loginfo("Closing the gripper...")
+        gripper_joint_position = 1.0  # Adjust this value depending on your gripper's range
+        self.gripper_group.set_joint_value_target([gripper_joint_position])
         self.gripper_group.go(wait=True)
 
         # 7. Return to the initial position
@@ -299,7 +326,8 @@ class PickPlaceServer:
 
         # 12. Open the gripper
         rospy.loginfo("Opening the gripper...")
-        self.gripper_group.set_named_target('open')
+        gripper_joint_position = 0.0  # Adjust this value depending on your gripper's range
+        self.gripper_group.set_joint_value_target([gripper_joint_position])
         self.gripper_group.go(wait=True)
 
         # 13. Detach the object from the gripper using Gazebo_ros_link_attacher

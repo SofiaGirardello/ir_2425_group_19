@@ -40,7 +40,7 @@ class ObjectDetectionNode:
         self.obj_collision = AddCollisionObject()
 
         # Subscribe to /placement_positions
-        self.placement_sub = rospy.Subscriber('/placement_positions', Point, self.placement_callback)
+        self.placement_sub = rospy.Subscriber('/placement_positions', PoseStamped, self.placement_callback)
 
         # Subscribe to the /tag_detections topic to get AprilTag detections
         self.detection_sub = rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.detection_callback)
@@ -75,7 +75,8 @@ class ObjectDetectionNode:
 
         for detection in msg.detections:
             tag_id = detection.id[0]
-            if tag_id not in self.detected_ids and tag_id != 10:
+
+            if tag_id not in self.detected_ids:
                 self.detected_ids.append(tag_id)
                 # Create a PoseStamped object for the tag's pose
                 pos_in = PoseStamped()
@@ -90,36 +91,63 @@ class ObjectDetectionNode:
                 except tf.Exception as e:
                     rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
-                # Create collision object for current id
-                self.obj_collision.add_new_collision_object(tag_id, pos_out)
+                if tag_id != 10:
+                    # Create collision object for current id
+                    self.obj_collision.add_new_collision_object(tag_id, pos_out)
+                    self.detected_poses.append(pos_out)
+                else:
+                    for ind in range(len(self.placement_positions)):
+                        self.placement_positions[ind].header.frame_id = "tag_10"
 
-                self.detected_poses.append(pos_out)
-        
-        if len(self.detected_ids) >= 8:
+        if len(self.detected_ids) >= 4:
             rospy.loginfo("Mannaggia il cristo")
             
             try:
                 self.listener.waitForTransform("base_link", source_frame, rospy.Time(0), rospy.Duration(1.0))
-                self.listener_tag10.waitForTransform("base_link", "tag10", rospy.Time(0), rospy.Duration(1.0))
             except tf.Exception as e:
                 rospy.logerr(f"Transform unavailable: {e}")
                 return
             try:
-                pick_poses = self.listener.transformPose("base_link", self.detected_poses)
-                place_poses = self.listener_tag10.transformPose("base_link", self.placement_positions)
+                pick_poses = []
+                place_poses = []
+                for detection in self.detected_poses:
+                    pick_pose = self.listener.transformPose("base_link", detection)
+                    pick_poses.append(pick_pose)
+                for detection in self.placement_positions:
+                    place_pose = self.listener.transformPose("base_link", detection)
+                    place_poses.append(place_pose)
             except tf.Exception as e:
                 rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
+<<<<<<< HEAD
+            rospy.loginfo(f"{self.detected_ids}")
+            if 10 in self.detected_ids:
+                ind = self.detected_ids.index(10)
+                self.detected_ids.pop(ind)
+                self.detected_poses.pop(ind)
+                rospy.loginfo("prima")
+            rospy.loginfo(f"{self.detected_ids}")
+            self.send_pick_place_goal(self.detected_ids, pick_poses, place_poses)
+            #self.detection_sub.unregister()
+=======
         if len(self.detected_ids) > 0 and len(self.placement_positions) > 0:
             rospy.loginfo("Sending a goal...")
             self.send_pick_place_goal(self.detected_ids, self.detected_poses, self.placement_positions)
             self.detection_sub.unregister()
+>>>>>>> b12b4ed700dbbe11da642dbc6b50101ed8eaf17e
 
     def send_pick_place_goal(self, detected_ids, detected_poses, place_poses):
         """
         Sends a pick-and-place goal to the action server.
         """
 
+<<<<<<< HEAD
+        rospy.loginfo("durante")
+        min_ind = min(len(detected_poses), len(place_poses))
+        rospy.loginfo(f"{min_ind}")
+        for i in range(1, min_ind+1):
+            rospy.loginfo("3-2")
+=======
         rospy.loginfo("In the pick place goal")
         rospy.loginfo(f"Detected IDs: {len(detected_ids)}, Detected Poses: {len(detected_poses)}, Place Poses: {len(place_poses)}")
 
@@ -139,12 +167,13 @@ class ObjectDetectionNode:
             pose_place.pose.position = pose_place.pose.position
             pose_place.pose.orientation.w = 1.0
 
+>>>>>>> b12b4ed700dbbe11da642dbc6b50101ed8eaf17e
             goal = PickPlaceGoal()
-            goal.object_pose = pose_pick
-            goal.place_pose = pose_place
-            goal.id = id
+            goal.object_pose = detected_poses[i]
+            goal.place_pose = place_poses[i]
+            goal.id = detected_ids[i]
 
-            rospy.loginfo(f"Sending pick-and-place goal for tag ID {id}")
+            rospy.loginfo(f"Sending pick-and-place goal for tag ID {goal.id}")
             self.client.send_goal(goal, feedback_cb=self.feedback_callback)
             self.client.wait_for_result()
 
@@ -152,11 +181,10 @@ class ObjectDetectionNode:
 
             rospy.loginfo(f"Received result: {result}")
             if result.success:
-                rospy.loginfo(f"Pick-and-place successful for tag ID {id}")
+                rospy.loginfo(f"Pick-and-place successful for tag ID {goal.id}")
             else:
-                rospy.logwarn(f"Pick-and-place failed for tag ID {id}")
+                rospy.logwarn(f"Pick-and-place failed for tag ID {goal.id}")
 
-            cont += 1
 
     def feedback_callback(self, feedback):
         """

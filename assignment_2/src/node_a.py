@@ -13,13 +13,13 @@
 
 import rospy
 from tiago_iaslab_simulation.srv import Coeffs
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Quaternion, PoseStamped
 
 class PlacementLineNode:
     def __init__(self):
         rospy.init_node('node_a_line_placement')
         self.service_name = '/straight_line_srv'
-        self.placement_pub = rospy.Publisher('/placement_positions', Point, queue_size=10)
+        self.placement_pub = rospy.Publisher('/placement_positions', PoseStamped, queue_size=10)
 
         rospy.loginfo("Waiting for /straight_line_srv service...")
         rospy.wait_for_service(self.service_name)
@@ -49,13 +49,19 @@ class PlacementLineNode:
     def publish_positions(self):
         if self.coeffs:
             m, q = self.coeffs[0], self.coeffs[1]
-            positions = []
             for x in range(1, 4): # Example x values, could be adjusted or made configurable
                 x = x/10  
                 y = m * x + q
-                position = Point(x, y, 0)  # Z coordinate is 0
-                positions.append(position)
-                self.placement_pub.publish(position)
+                position = Point(x, y, 0.0)  # Z coordinate is 0
+                orientation = Quaternion(0, 0, 0, 1)
+
+                pose = PoseStamped()
+                pose.pose.position = position
+                pose.pose.orientation = orientation
+                pose.header.frame_id = ""
+                pose.header.stamp = rospy.Time(0)
+
+                self.placement_pub.publish(pose)
                 rospy.loginfo(f"Published placement position: {position}")
 
 if __name__ == '__main__':
