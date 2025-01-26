@@ -39,11 +39,11 @@ class ObjectDetectionNode:
 
         self.obj_collision = AddCollisionObject()
 
-        # Subscribe to the /tag_detections topic to get AprilTag detections
-        self.detection_sub = rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.detection_callback)
-
         # Subscribe to /placement_positions
         self.placement_sub = rospy.Subscriber('/placement_positions', Point, self.placement_callback)
+
+        # Subscribe to the /tag_detections topic to get AprilTag detections
+        self.detection_sub = rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.detection_callback)
 
         # Action client for pick-and-place operation
         self.client = actionlib.SimpleActionClient('pick_place', PickPlaceAction)
@@ -61,6 +61,9 @@ class ObjectDetectionNode:
         """
         Callback function for AprilTag detections. It processes detected tags and transforms their poses to the target frame.
         """
+
+        rospy.loginfo("In the detection callback")
+
         source_frame = msg.header.frame_id
 
         # Wait for the transform to be available
@@ -83,6 +86,7 @@ class ObjectDetectionNode:
                 # Transform the pose to the target frame
                 try:
                     pos_out = self.listener.transformPose(self.target_frame, pos_in)
+                    rospy.loginfo("Successfully transformed")
                 except tf.Exception as e:
                     rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
@@ -106,7 +110,9 @@ class ObjectDetectionNode:
             except tf.Exception as e:
                 rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
-            self.send_pick_place_goal(self.detected_ids, pick_poses, place_poses)
+        if len(self.detected_ids) > 0 and len(self.placement_positions) > 0:
+            rospy.loginfo("Sending a goal...")
+            self.send_pick_place_goal(self.detected_ids, self.detected_poses, self.placement_positions)
             self.detection_sub.unregister()
 
     def send_pick_place_goal(self, detected_ids, detected_poses, place_poses):
@@ -114,11 +120,25 @@ class ObjectDetectionNode:
         Sends a pick-and-place goal to the action server.
         """
 
+        rospy.loginfo("In the pick place goal")
+        rospy.loginfo(f"Detected IDs: {len(detected_ids)}, Detected Poses: {len(detected_poses)}, Place Poses: {len(place_poses)}")
+
+
         cont = 0
         for id, pose_pick, pose_place in zip(detected_ids, detected_poses, place_poses):
 
+            rospy.loginfo("In the loop")
+
             if cont >= 4:
                 break
+
+            # Convert Point to PoseStamped
+            pose_place = PoseStamped()
+            pose_place.header.frame_id = self.target_frame
+            pose_place.header.stamp = rospy.Time.now()
+            pose_place.pose.position = pose_place.pose.position
+            pose_place.pose.orientation.w = 1.0
+
             goal = PickPlaceGoal()
             goal.object_pose = pose_pick
             goal.place_pose = pose_place

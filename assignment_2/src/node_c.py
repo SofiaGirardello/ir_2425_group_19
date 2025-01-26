@@ -60,7 +60,7 @@ class PickPlaceServer:
         #self.goal_queue = deque()  # Use deque for efficient pop from left
         #self.processing_goal = False  # Flag to track goal processing status
 
-        self.navigate_to_pickup_table(8.8, 0.0, 0.0)
+        # self.navigate_to_pickup_table(8.8, 0.0, 0.0)
 
         # Pre-move robot to a midway point
         #self.navigate_to_pickup_table(8.8, -3.0, -1.57)
@@ -94,6 +94,8 @@ class PickPlaceServer:
 
         # Move robot in front of the pick-up table 
         self.navigate_to_pickup_table(8.8, -3.0, 3.14)
+
+        self.collision_object.add_pick_and_place_tables()
 
         tilt_angle = -0.5  # Angle in rad, negative for downward inclinations
         self.tilt_head(tilt_angle)
@@ -220,7 +222,7 @@ class PickPlaceServer:
         # Add the logic to execute the pick-and-place operation here
         rospy.loginfo("Executing pick-and-place operation...")
         # Example placeholder: Replace with your pick-and-place logic
-        #self.execute_pick_and_place(goal)
+        self.execute_pick_and_place(goal)
     
     def execute_pick_and_place(self, goal):
         """
