@@ -62,8 +62,6 @@ class ObjectDetectionNode:
         Callback function for AprilTag detections. It processes detected tags and transforms their poses to the target frame.
         """
 
-        rospy.loginfo("In the detection callback")
-
         source_frame = msg.header.frame_id
 
         # Wait for the transform to be available
@@ -87,7 +85,7 @@ class ObjectDetectionNode:
                 # Transform the pose to the target frame
                 try:
                     pos_out = self.listener.transformPose(self.target_frame, pos_in)
-                    rospy.loginfo("Successfully transformed")
+                    rospy.loginfo("Suvessfully transformed")
                 except tf.Exception as e:
                     rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
@@ -100,10 +98,10 @@ class ObjectDetectionNode:
                         self.placement_positions[ind].header.frame_id = "tag_10"
 
         if len(self.detected_ids) >= 4:
-            rospy.loginfo("Mannaggia il cristo")
             
             try:
-                self.listener.waitForTransform("base_link", source_frame, rospy.Time(0), rospy.Duration(1.0))
+                self.listener.waitForTransform("base_link", self.target_frame, rospy.Time(0), rospy.Duration(1.0))
+                self.listener_tag10.waitForTransform("base_link", "tag_10", rospy.Time(0), rospy.Duration(1.0))
             except tf.Exception as e:
                 rospy.logerr(f"Transform unavailable: {e}")
                 return
@@ -114,31 +112,31 @@ class ObjectDetectionNode:
                     pick_pose = self.listener.transformPose("base_link", detection)
                     pick_poses.append(pick_pose)
                 for detection in self.placement_positions:
-                    place_pose = self.listener.transformPose("base_link", detection)
+                    place_pose = self.listener_tag10.transformPose("base_link", detection)
                     place_poses.append(place_pose)
             except tf.Exception as e:
                 rospy.logerr(f"Failed to transform pose for tag ID {tag_id}: {e}")
 
-            rospy.loginfo(f"{self.detected_ids}")
+            rospy.loginfo(f"Detected ids: {self.detected_ids}")
+
             if 10 in self.detected_ids:
+
                 ind = self.detected_ids.index(10)
                 self.detected_ids.pop(ind)
                 self.detected_poses.pop(ind)
-                rospy.loginfo("prima")
-            rospy.loginfo(f"{self.detected_ids}")
+
             self.send_pick_place_goal(self.detected_ids, pick_poses, place_poses)
-            #self.detection_sub.unregister()
+            # self.detection_sub.unregister()
 
     def send_pick_place_goal(self, detected_ids, detected_poses, place_poses):
         """
         Sends a pick-and-place goal to the action server.
         """
 
-        rospy.loginfo("durante")
         min_ind = min(len(detected_poses), len(place_poses))
-        rospy.loginfo(f"{min_ind}")
+        
         for i in range(1, min_ind+1):
-            rospy.loginfo("3-2")
+            
             goal = PickPlaceGoal()
             goal.object_pose = detected_poses[i]
             goal.place_pose = place_poses[i]

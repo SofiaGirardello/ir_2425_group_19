@@ -19,11 +19,12 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalStatus
 from geometry_msgs.msg import Pose, Quaternion
 from gazebo_ros_link_attacher.srv import Attach
-from tf.transformations import quaternion_from_euler, euler_from_quaternion
+from tf.transformations import quaternion_from_euler, euler_from_quaternion, quaternion_matrix
 from collections import deque
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from moveit_commander import MoveGroupCommander, PlanningSceneInterface, RobotCommander ,RobotTrajectory
 from assignment_2.objectCollision import AddCollisionObject
+import math
 
 class PickPlaceServer:
     def __init__(self):
@@ -57,29 +58,14 @@ class PickPlaceServer:
         self.server.start()
         rospy.loginfo("Pick-and-place action server is ready.")
 
-        # Queue for storing incoming goals
-        #self.goal_queue = deque()  # Use deque for efficient pop from left
-        #self.processing_goal = False  # Flag to track goal processing status
-
-        self.navigate_to_pickup_table(8.8, 0.0, 0.0)
-
         # Pre-move robot to a midway point
-        # self.navigate_to_pickup_table(8.8, -3.0, -1.57)
-
-        # Debugging the arm's position
-        # current_pose = self.arm_group.get_current_pose().pose
-        # rospy.loginfo(f"Current arm pose: {current_pose}")
-
-        # Debugging joint values
-        # current_joints = self.arm_group.get_current_joint_values()
-        # rospy.loginfo(f"Current joint values: {current_joints}")
-
+        self.navigate_to_pickup_table(8.8, 0.0, 0.0)
 
         # Set the current joint state as the start state
         self.arm_group.set_start_state_to_current_state()
 
         self.target_joint_values = [
-        0.34,
+        0.34,      # Torso: Move torso (e.g., 34 cm)
         0.07,     # Joint 1: Base rotation (e.g., 0.5 radians)
         0.34,    # Joint 2: Shoulder (e.g., -0.3 radians)
         -3.13,     # Joint 3: Elbow (e.g., 0.8 radians)
@@ -94,12 +80,15 @@ class PickPlaceServer:
 
         self.arm_group.go(wait=True)
 
+        # Move robot in front of the place table 
         self.navigate_to_pickup_table(9.2, -2.0, 3.14)
 
         tilt_angle = -1 # Angle in rad, negative for downward inclinations
+
         self.tilt_head(tilt_angle)
-        rospy.sleep(3)
+        
         self.tilt_head(0)
+
         # Move robot in front of the pick-up table 
         self.navigate_to_pickup_table(8.8, -3.0, 3.14)
 
@@ -114,15 +103,15 @@ class PickPlaceServer:
         self.arm_group.set_pose_reference_frame('base_link')
         self.arm_group.set_pose_target(target_pose)
           
-
-        self.plan = self.arm_group.plan()
         # Plan the motion and check for collisions
+        self.plan = self.arm_group.plan()
+        
         success = self.arm_group.go(wait=True)
-
+    
         if success:
             rospy.loginfo(f"Successfully moved to target pose: {target_pose}")
         else:
-            rospy.logerr("Failed due to plan motion.")
+            rospy.logerr("Failed due to error in plan motion.")
             self.arm_group.set_joint_value_target(self.target_joint_values)
             self.arm_group.go(wait=True)
         
@@ -152,15 +141,15 @@ class PickPlaceServer:
         goal.target_pose.pose.orientation.w = quaternion[3]
 
         # Send the goal to the MoveBase action server
-        rospy.loginfo(f"Navigating to pickup table: x={x}, y={y}, yaw={yaw}")
+        rospy.loginfo(f"Navigating to the waypoint: x={x}, y={y}, yaw={yaw}")
         self.move_base_client.send_goal(goal)
         self.move_base_client.wait_for_result()
 
         # Check result status
         if self.move_base_client.get_state() == GoalStatus.SUCCEEDED:
-            rospy.loginfo("Successfully reached the pickup table!")
+            rospy.loginfo("Successfully reached the waypoint!")
         else:
-            rospy.logerr("Navigation to pickup table failed.")
+            rospy.logerr("Navigation to waypoint failed.")
 
     def tilt_head(self, tilt_angle):
         """
@@ -195,7 +184,7 @@ class PickPlaceServer:
 
         try:
             # Process the received goal directly
-            #self.process_goal(goal)
+            self.process_goal(goal)
 
             # Execute pick-and-place operation
             self.execute_pick_and_place(goal)
@@ -224,22 +213,18 @@ class PickPlaceServer:
             rospy.loginfo(f"Picking object identified by AprilTag ID: {goal.id}")
         else:
             rospy.logwarn("Goal does not contain a valid AprilTag ID.")
-
-        # Add the logic to execute the pick-and-place operation here
-        rospy.loginfo("Executing pick-and-place operation...")
-        # Example placeholder: Replace with your pick-and-place logic
-        self.execute_pick_and_place(goal)
     
     def execute_pick_and_place(self, goal):
         """
         Executes the pick-and-place task for the given goal.
         """
         try:
-            
+            rospy.loginfo("Executing pick-and-place operation...")
             self.pick_and_place(goal.id, goal.object_pose, goal.place_pose)
 
         except Exception as e:
             rospy.logerr(f"Error during pick-and-place: {e}")
+       
 
     def pick_and_place(self, id, object_pose, place_pose):
         """
@@ -257,7 +242,7 @@ class PickPlaceServer:
         above_object_pose.position.x = object_pose.pose.position.x 
         above_object_pose.position.y = object_pose.pose.position.y 
         above_object_pose.position.z = object_pose.pose.position.z + 0.5
-
+        
         object_orientation = object_pose.pose.orientation
         _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
         
@@ -270,7 +255,7 @@ class PickPlaceServer:
         above_object_pose.orientation.z = new_orientation[2]
         above_object_pose.orientation.w = new_orientation[3]
         # above_object_pose.orientation = object_pose.pose.orientation # Qua ce lo prendiamo in culo
-        
+
         self.move_arm_to_pose(above_object_pose)
         rospy.loginfo("I am on above object pose")
         
@@ -282,7 +267,7 @@ class PickPlaceServer:
         self.collision_object.remove_collision_object(id)
 
         # 3. Grasping the object through a linear movement (move down to the object)
-        object_pose.pose.position.z = object_pose.pose.position.z + 0.2
+        object_pose.pose.position.z = object_pose.pose.position.z + 0.25
         self.move_arm_to_pose(object_pose)
         rospy.loginfo("I am on object pose")
 
@@ -298,8 +283,8 @@ class PickPlaceServer:
 
         # 6. Close the gripper
         rospy.loginfo("Closing the gripper...")
-        gripper_joint_position = 0.0  # Adjust this value depending on your gripper's range
-        self.gripper_group.set_joint_value_target([gripper_joint_position])
+        gripper_joint_position = [0.01, 0.01]  # Adjust this value depending on your gripper's range
+        self.gripper_group.set_joint_value_target(gripper_joint_position)
         self.gripper_group.go(wait=True)
 
         # 7. Return to the initial position
@@ -315,13 +300,13 @@ class PickPlaceServer:
         self.navigate_to_pickup_table(8.8, -2.0, 3.14)
 
         # 11. Place the object on the table
-        rospy.loginfo(f"Placing object at: {place_pose.position.x}, {place_pose.position.y}")
+        rospy.loginfo(f"Placing object at: {place_pose.pose.position.x}, {place_pose.pose.position.y}")
         self.move_arm_to_pose(place_pose)
 
         # 12. Open the gripper
         rospy.loginfo("Opening the gripper...")
-        gripper_joint_position = 0.1  # Adjust this value depending on your gripper's range
-        self.gripper_group.set_joint_value_target([gripper_joint_position])
+        gripper_joint_position = [0.9, 0.9]  # Adjust this value depending on your gripper's range
+        self.gripper_group.set_joint_value_target(gripper_joint_position)
         self.gripper_group.go(wait=True)
 
         # 13. Detach the object from the gripper using Gazebo_ros_link_attacher

@@ -50,7 +50,7 @@ class PlacementLineNode:
         if self.coeffs:
             m, q = self.coeffs[0], self.coeffs[1]
             for x in range(1, 4): # Example x values, could be adjusted or made configurable
-                x = x/10  
+                x = x/50  
                 y = m * x + q
                 position = Point(x, y, 0.0)  # Z coordinate is 0
                 orientation = Quaternion(0, 0, 0, 1)

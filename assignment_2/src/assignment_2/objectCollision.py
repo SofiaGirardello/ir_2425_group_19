@@ -31,7 +31,7 @@ class AddCollisionObject:
         # Define the solid box for the tables
         table_primitive = SolidPrimitive()
         table_primitive.type = table_primitive.BOX
-        table_primitive.dimensions = [0.90, 0.90, 0.45]
+        table_primitive.dimensions = [0.90, 0.90, 0.75]
 
         # Define the pick table pose in the map frame
         pick_table_pose = Pose()
