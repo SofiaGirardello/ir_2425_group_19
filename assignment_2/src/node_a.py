@@ -13,13 +13,13 @@
 
 import rospy
 from tiago_iaslab_simulation.srv import Coeffs
-from geometry_msgs.msg import Point, Quaternion, PoseStamped
+from geometry_msgs.msg import Point
 
 class PlacementLineNode:
     def __init__(self):
         rospy.init_node('node_a_line_placement')
         self.service_name = '/straight_line_srv'
-        self.placement_pub = rospy.Publisher('/placement_positions', PoseStamped, queue_size=10)
+        self.placement_pub = rospy.Publisher('/placement_positions', Point, queue_size=10)
 
         rospy.loginfo("Waiting for /straight_line_srv service...")
         rospy.wait_for_service(self.service_name)
@@ -28,13 +28,8 @@ class PlacementLineNode:
         # Get line coefficients once
         self.coeffs = self.get_line_coefficients()
 
-        rate = rospy.Rate(1)
-        while not rospy.is_shutdown():
-            # Check if there is at least a subscriber to the topic before publishing
-            if self.placement_pub.get_num_connections() > 0:
-                self.publish_positions() 
-                break
-            rate.sleep()
+        # Set up a timer to publish placement positions every 5 seconds
+        rospy.Timer(rospy.Duration(5), self.publish_positions)
 
     def get_line_coefficients(self):
         try:
@@ -46,22 +41,15 @@ class PlacementLineNode:
             rospy.logerr(f"Service call failed: {e}")
             return None
 
-    def publish_positions(self):
+    def publish_positions(self, event):
         if self.coeffs:
             m, q = self.coeffs[0], self.coeffs[1]
-            for x in range(1, 4): # Example x values, could be adjusted or made configurable
-                x = x/50  
+            positions = []
+            for x in range(1, 5):  # Example x values, could be adjusted or made configurable
                 y = m * x + q
-                position = Point(x, y, 0.0)  # Z coordinate is 0
-                orientation = Quaternion(0, 0, 0, 1)
-
-                pose = PoseStamped()
-                pose.pose.position = position
-                pose.pose.orientation = orientation
-                pose.header.frame_id = ""
-                pose.header.stamp = rospy.Time(0)
-
-                self.placement_pub.publish(pose)
+                position = Point(x, y, 0)  # Z coordinate is 0
+                positions.append(position)
+                self.placement_pub.publish(position)
                 rospy.loginfo(f"Published placement position: {position}")
 
 if __name__ == '__main__':
