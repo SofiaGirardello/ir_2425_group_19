@@ -32,7 +32,8 @@ catkin_python_setup()
 ## Generate actions in the 'action' folder
 add_action_files(
    FILES
-   PickPlace.action
+   PickObject.action
+   PlaceObject.action
    # You can add more actions here
 )
 

@@ -1,0 +1,16 @@
+<launch>
+    <!-- Lancia la simulazione con il mondo specifico -->
+    <include file="$(find tiago_iaslab_simulation)/launch/start_simulation.launch">
+        <arg name="world_name" value="iaslab_assignment2"/>
+    </include>
+
+    <!-- Lancia apriltag detection -->
+    <include file="$(find tiago_iaslab_simulation)/launch/apriltag2.launch" />
+
+    <!-- Lancia il sistema di navigazione -->
+    <include file="$(find tiago_iaslab_simulation)/launch/navigation.launch" />
+
+    <!-- Avvia il nodo get_straightline_node -->
+    <node name="get_straightline_node" pkg="tiago_iaslab_simulation" type="get_straightline_node" output="screen" />
+</launch>
+

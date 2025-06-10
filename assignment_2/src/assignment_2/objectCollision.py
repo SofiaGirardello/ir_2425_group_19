@@ -4,133 +4,165 @@ import rospy
 import moveit_commander
 from geometry_msgs.msg import Pose, PoseStamped
 from shape_msgs.msg import SolidPrimitive
-from moveit_commander import PlanningSceneInterface
+from moveit_commander import PlanningSceneInterface, CollisionObject
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
 class AddCollisionObject:
+    """
+    Class to manage the addition and removal of collision objects in the MoveIt! planning scene.
+
+    Functionalities:
+    - Add static collision objects (tables).
+    - Add dynamic collision objects (pickable items) based on tag IDs.
+    - Remove objects from the planning scene after picking.
+    """
+    
     def __init__(self):
+        """
+        Initializes the planning scene interface and adds static objects (tables).
+        """
 
         # Initialize MoveIt! components
-        self.scene = PlanningSceneInterface()
         moveit_commander.roscpp_initialize(sys.argv)
+        self.scene = PlanningSceneInterface()
+        rospy.sleep(1.0)
 
+        # Cache currently known objects to avoid duplication
+        self.current_objects = set(self.scene.get_known_object_names())
+
+        # Placeholders for item geometry
         self.itempose = Pose()
         self.solidprimitive = SolidPrimitive()
 
-        # Add collision objects for the tables
+        # Add the tables to the scene if not already present
         self.add_pick_and_place_tables()
 
     def add_pick_and_place_tables(self):
+        """
+        Adds static collision objects representing the pick and place tables.
+        """
 
-        current_objects = self.scene.get_objects()
-
-        # Check if the collision object is already in the scene
-        if "pick_table" in current_objects:
+        # Check to prevent adding duplicates
+        if "pick_table" in self.current_objects and "place_table" in self.current_objects:
+            rospy.loginfo("Tables already in the scene!")
             return
         
-        # Define the solid box for the tables
+        # Table geometry: box of defined size
         table_primitive = SolidPrimitive()
-        table_primitive.type = table_primitive.BOX
-        table_primitive.dimensions = [0.90, 0.90, 0.65]
+        table_primitive.type = SolidPrimitive.BOX
+        table_primitive.dimensions = [0.90, 0.90, 0.776]
 
-        # Define the pick table pose in the map frame
+        # Pick table pose 
         pick_table_pose = Pose()
-        pick_table_pose.position.x = 7.826
-        pick_table_pose.position.y = -2.983
-        pick_table_pose.position.z = 0.75 / 2  # Half the height of the table
+        pick_table_pose.position.x = 7.917558
+        pick_table_pose.position.y = -3.01654
+        pick_table_pose.position.z = 0.776 / 2  # Due to how BOX 'height' parameter works 
+        pick_table_pose.orientation.x = 0.0
+        pick_table_pose.orientation.y = 0.0
+        pick_table_pose.orientation.z = 0.0
         pick_table_pose.orientation.w = 1.0
 
-        # Create the collision object for the pick table
+        # Collision object definition
         pick_collision_object = moveit_commander.CollisionObject()
         pick_collision_object.header.frame_id = "map"
         pick_collision_object.id = "pick_table"
         pick_collision_object.primitives.append(table_primitive)
         pick_collision_object.primitive_poses.append(pick_table_pose)
-        pick_collision_object.operation = pick_collision_object.ADD
+        pick_collision_object.operation = CollisionObject.ADD
 
-        # Define the place table pose in the map frame
+        # Place table pose 
         place_table_pose = Pose()
-        place_table_pose.position.x = 7.895753
-        place_table_pose.position.y = -1.923828
-        place_table_pose.position.z = 0.75 / 2
+        place_table_pose.position.x = 7.897433
+        place_table_pose.position.y = -1.923835
+        place_table_pose.position.z = 0.776 / 2
+        place_table_pose.orientation.x = 0.0
+        place_table_pose.orientation.y = 0.0
+        place_table_pose.orientation.z = 0.0
         place_table_pose.orientation.w = 1.0
 
-        # Create the collision object for the place table
+        # Collision object definition
         place_collision_object = moveit_commander.CollisionObject()
         place_collision_object.header.frame_id = "map"
         place_collision_object.id = "place_table"
         place_collision_object.primitives.append(table_primitive)
         place_collision_object.primitive_poses.append(place_table_pose)
-        place_collision_object.operation = place_collision_object.ADD
+        place_collision_object.operation = CollisionObject.ADD
 
         # Add the collision objects to the scene
         self.scene.add_object(pick_collision_object)
         self.scene.add_object(place_collision_object)
+        rospy.loginfo("Tables collision objects added to scene!")
 
-        rospy.loginfo("Collision objects added to the scene!")
+    def add_new_collision_object(self, tag_id, pos_out, ref_frame):
+        """
+        Adds a new collision object to the scene based on object ID and pose.
+        """
 
-    def add_new_collision_object(self, tag_id, pos_out):
-
-        rospy.loginfo("Start diocane")
-
-        collision_object = moveit_commander.CollisionObject()
-
-        
+        # Determine the shape and pose offset
         self.solidprimitive, self.itempose = self.map_id_to_solid(tag_id, pos_out)
 
-        collision_object.header.frame_id = "map"
+        # Define the collision object
+        collision_object = moveit_commander.CollisionObject()
+        collision_object.header.frame_id = ref_frame
         collision_object.id = str(tag_id)
         collision_object.primitives.append(self.solidprimitive)
         collision_object.primitive_poses.append(self.itempose)
-        collision_object.operation = collision_object.ADD
+        collision_object.operation = CollisionObject.ADD
 
+        # Add the collision object to the scene
         self.scene.add_object(collision_object)
-
-        rospy.loginfo(f"{tag_id}")
+        rospy.loginfo(f"Object collision added for tag {tag_id}.")
 
     def remove_collision_object(self, tag_id):
+        """
+        Removes a collision object from the scene by ID.
+        """
+        
+        tag_id_str = str(tag_id)
+        
+        # Check if the object exists in the scene
+        current_objects = self.scene.get_known_object_names()
+        
+        if tag_id_str in current_objects:
+            self.scene.remove_world_object(tag_id_str)
+            rospy.loginfo(f"Collision object '{tag_id_str}' removed from scene.")
+        else:
+            rospy.logwarn(f"Collision object '{tag_id_str}' not present in the scene.")
 
-        self.scene.remove_world_object(str(tag_id))
 
     def map_id_to_solid(self, id, pose):
-
+        """
+        Maps a tag ID to the associated apriltag's shape and dimensions.
+        """
+        
         solidprimitive = SolidPrimitive()
+        # Extract Pose from PoseStamped
         itempose = pose.pose
-        
 
-        object_orientation = itempose.orientation
-        _, _, yaw = euler_from_quaternion([object_orientation.x, object_orientation.y, object_orientation.z, object_orientation.w])
-        
-        # Convert Euler angles (roll, pitch, yaw) back to quaternion
-        new_orientation = quaternion_from_euler(0, 0, yaw)
-
-        # Assuming you want to set the orientation in a new pose
-        itempose.orientation.x = new_orientation[0]
-        itempose.orientation.y = new_orientation[1]
-        itempose.orientation.z = new_orientation[2]
-        itempose.orientation.w = new_orientation[3]
-
+        # Shape ID groups
         list_hexagon = [1, 2, 3]
         list_cube = [4, 5, 6]
         list_triangular = [7, 8, 9]
 
-        cylinder_dimension = [0.1, 0.05]
-        cube_dimension = [0.05, 0.05, 0.05]
-        parallelepiped_dimension = [0.05, 0.07, 0.035] 
-
+        # Shape dimensions
+        cylinder_dimension = [0.1, 0.03]                    # height, radius
+        cube_dimension = [0.05, 0.05, 0.05]                 # length, width, height
+        parallelepiped_dimension = [0.05, 0.07, 0.035]      # length, width, height
+        
+        # Assign shape and z-offset for collision modeling
         if id in list_hexagon:
-            solidprimitive.type = solidprimitive.CYLINDER
+            solidprimitive.type = SolidPrimitive.CYLINDER
             solidprimitive.dimensions = cylinder_dimension
-            itempose.position.z -= 0.05
+            itempose.position.z -= 0.05 # Adjust to base of object
 
         if id in list_cube:
-            solidprimitive.type = solidprimitive.BOX
+            solidprimitive.type = SolidPrimitive.BOX
             solidprimitive.dimensions = cube_dimension
-            itempose.position.z -= 0.025
+            itempose.position.z -= 0.025 # Adjust to base of object
 
         if id in list_triangular:
-            solidprimitive.type = solidprimitive.BOX
+            solidprimitive.type = SolidPrimitive.BOX
             solidprimitive.dimensions = parallelepiped_dimension
-            itempose.position.z -= 0.0175
+            itempose.position.z -= 0.0175 # Adjust to base of object
 
         return solidprimitive, itempose

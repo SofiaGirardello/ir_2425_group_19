@@ -1,0 +1,14 @@
+# PlaceObject.action
+
+# Goal
+geometry_msgs/PoseStamped place_pose
+int32 id
+
+---
+# Result
+bool success
+
+---
+# Feedback 
+string message
+

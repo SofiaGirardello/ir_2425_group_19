@@ -1,0 +1,14 @@
+# PickObject.action
+
+# Goal
+geometry_msgs/PoseStamped object_pose
+int32 id
+
+---
+# Result
+bool success
+
+---
+# Feedback 
+string message
+
